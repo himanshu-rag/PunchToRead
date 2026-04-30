@@ -17,20 +17,104 @@ HAND_CONNECTIONS = [
     (13, 17), (0, 17), (17, 18), (18, 19), (19, 20)
 ]
 
+def get_distance(p1, p2):
+    return math.hypot(p1.x - p2.x, p1.y - p2.y)
+
+def draw_rounded_rect(img, top_left, bottom_right, color, thickness=cv2.FILLED, radius=15):
+    """Draws a rounded rectangle using OpenCV."""
+    x1, y1 = top_left
+    x2, y2 = bottom_right
+    
+    if thickness >= 0:
+        # Draw straight lines
+        cv2.line(img, (x1 + radius, y1), (x2 - radius, y1), color, thickness, cv2.LINE_AA)
+        cv2.line(img, (x1 + radius, y2), (x2 - radius, y2), color, thickness, cv2.LINE_AA)
+        cv2.line(img, (x1, y1 + radius), (x1, y2 - radius), color, thickness, cv2.LINE_AA)
+        cv2.line(img, (x2, y1 + radius), (x2, y2 - radius), color, thickness, cv2.LINE_AA)
+        
+        # Draw arcs
+        cv2.ellipse(img, (x1 + radius, y1 + radius), (radius, radius), 180, 0, 90, color, thickness, cv2.LINE_AA)
+        cv2.ellipse(img, (x2 - radius, y1 + radius), (radius, radius), 270, 0, 90, color, thickness, cv2.LINE_AA)
+        cv2.ellipse(img, (x2 - radius, y2 - radius), (radius, radius), 0, 0, 90, color, thickness, cv2.LINE_AA)
+        cv2.ellipse(img, (x1 + radius, y2 - radius), (radius, radius), 90, 0, 90, color, thickness, cv2.LINE_AA)
+    else:
+        # Fill the center body
+        cv2.rectangle(img, (x1 + radius, y1), (x2 - radius, y2), color, cv2.FILLED)
+        cv2.rectangle(img, (x1, y1 + radius), (x2, y2 - radius), color, cv2.FILLED)
+        # Fill the corners
+        cv2.ellipse(img, (x1 + radius, y1 + radius), (radius, radius), 180, 0, 90, color, cv2.FILLED, cv2.LINE_AA)
+        cv2.ellipse(img, (x2 - radius, y1 + radius), (radius, radius), 270, 0, 90, color, cv2.FILLED, cv2.LINE_AA)
+        cv2.ellipse(img, (x2 - radius, y2 - radius), (radius, radius), 0, 0, 90, color, cv2.FILLED, cv2.LINE_AA)
+        cv2.ellipse(img, (x1 + radius, y2 - radius), (radius, radius), 90, 0, 90, color, cv2.FILLED, cv2.LINE_AA)
+
+def draw_glass_panel(img, top_left, bottom_right, radius=15, alpha=0.6, bg_color=(30, 30, 30), border_color=(100, 100, 100)):
+    x1, y1 = top_left
+    x2, y2 = bottom_right
+    h, w = img.shape[:2]
+    
+    # Ensure coords are within bounds
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(w, x2), min(h, y2)
+    
+    roi = img[y1:y2, x1:x2]
+    if roi.size == 0: return
+    
+    overlay = roi.copy()
+    
+    # Local coordinates for the ROI
+    loc_tl = (0, 0)
+    loc_br = (x2 - x1, y2 - y1)
+    
+    draw_rounded_rect(overlay, loc_tl, loc_br, bg_color, thickness=cv2.FILLED, radius=radius)
+    cv2.addWeighted(overlay, alpha, roi, 1 - alpha, 0, roi)
+    
+    # Subtle border
+    draw_rounded_rect(img, top_left, bottom_right, border_color, thickness=1, radius=radius)
+
 def draw_landmarks(image, hand_landmarks):
     h, w, c = image.shape
-    # Draw connections
+    # Draw subtle connections
     for connection in HAND_CONNECTIONS:
         p1 = hand_landmarks[connection[0]]
         p2 = hand_landmarks[connection[1]]
         x1, y1 = int(p1.x * w), int(p1.y * h)
         x2, y2 = int(p2.x * w), int(p2.y * h)
-        cv2.line(image, (x1, y1), (x2, y2), (255, 255, 255), 2)
+        cv2.line(image, (x1, y1), (x2, y2), (255, 255, 255), 1, cv2.LINE_AA)
         
-    # Draw points
+    # Draw subtle elegant dots
     for landmark in hand_landmarks:
         x, y = int(landmark.x * w), int(landmark.y * h)
-        cv2.circle(image, (x, y), 5, (0, 0, 255), cv2.FILLED)
+        cv2.circle(image, (x, y), 3, (220, 220, 220), cv2.FILLED, cv2.LINE_AA)
+
+wrapped_content_cache = {}
+
+def get_wrapped_lines(text, font, font_scale, thickness, max_width):
+    cache_key = (text, font, font_scale, thickness, max_width)
+    if cache_key in wrapped_content_cache:
+        return wrapped_content_cache[cache_key]
+    
+    words = text.split(' ')
+    lines = []
+    current_line = words[0]
+    for word in words[1:]:
+        (w, h), _ = cv2.getTextSize(current_line + " " + word, font, font_scale, thickness)
+        if w < max_width:
+            current_line += " " + word
+        else:
+            lines.append(current_line)
+            current_line = word
+    lines.append(current_line)
+    
+    (_, h), _ = cv2.getTextSize("Ay", font, font_scale, thickness)
+    wrapped_content_cache[cache_key] = (lines, h)
+    return lines, h
+
+def put_wrapped_text(img, text, position, font, font_scale, color, thickness, max_width):
+    lines, h = get_wrapped_lines(text, font, font_scale, thickness, max_width)
+    y = position[1]
+    for line in lines:
+        cv2.putText(img, line, (position[0], y), font, font_scale, color, thickness, cv2.LINE_AA)
+        y += int(h * 1.6)
 
 def main():
     # Setup Tasks API options
@@ -39,16 +123,11 @@ def main():
     HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
     VisionRunningMode = mp.tasks.vision.RunningMode
 
-    # The single selected topic (locked in when exactly 1 finger is raised)
+    # State variables
     selected_topic_global = None
-    
-    # Handedness that made the selection (to require the same hand to punch)
     selected_topic_hand = None
-    
-    # Is the user currently punching?
     show_content_mode = False
     
-    # Debounce frames
     hover_frames = 0
     punch_frames = 0
     exit_frames = 0
@@ -68,6 +147,7 @@ def main():
         'Ring: Weather/AQI': glob.glob(f"{art_dir}/weather_aqi_*.png"),
         'Pinky: Mobile Tech': glob.glob(f"{art_dir}/mobile_tech_*.png")
     }
+    
     loaded_images = {}
     for k, paths_list in image_paths.items():
         loaded_images[k] = []
@@ -92,36 +172,39 @@ def main():
         'Ring: Weather/AQI': "The Air Quality Index (AQI) in Delhi NCR has once again reached the 'severe+' category, prompting emergency measures including school closures and heavy vehicle bans. Conversely, the IMD has predicted unseasonably heavy rainfall and potential cyclonic warnings across the southern peninsula over the next 48 hours.",
         'Pinky: Mobile Tech': "Apple and Samsung have jointly showcased functional prototypes of fully foldable tablets equipped with transparent micro-LED displays at the latest keynote. These devices utilize novel polymer batteries that charge fully in under 3 minutes. Consumer release is eagerly anticipated for late 2027."
     }
+
+    news_mapping_right = {
+        'T': 'Thumb: AI news',
+        'I': 'Index: Geo political',
+        'M': 'Middle: India news',
+        'R': 'Ring: Indian frauds',
+        'P': 'Pinky: AI & Startups'
+    }
     
-    def put_wrapped_text(img, text, position, font, font_scale, color, thickness, max_width):
-        words = text.split(' ')
-        lines = []
-        current_line = words[0]
-        for word in words[1:]:
-            (w, h), _ = cv2.getTextSize(current_line + " " + word, font, font_scale, thickness)
-            if w < max_width:
-                current_line += " " + word
-            else:
-                lines.append(current_line)
-                current_line = word
-        lines.append(current_line)
-        
-        y = position[1]
-        for line in lines:
-            cv2.putText(img, line, (position[0], y), font, font_scale, color, thickness)
-            y += int(h * 1.5)
+    news_mapping_left = {
+        'T': 'Thumb: India budget',
+        'I': 'Index: MNC Jobs',
+        'M': 'Middle: Claude AI',
+        'R': 'Ring: Weather/AQI',
+        'P': 'Pinky: Mobile Tech'
+    }
 
     # Initialize webcam
     cap = cv2.VideoCapture(0)
-    # Give the camera a moment to warm up
     time.sleep(1)
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     
+    shared_state = {'results': None}
+    
+    def result_callback(result, output_image, timestamp_ms):
+        shared_state['results'] = result
+
     options = HandLandmarkerOptions(
         base_options=BaseOptions(model_asset_path='hand_landmarker.task'),
-        running_mode=VisionRunningMode.VIDEO,
+        running_mode=VisionRunningMode.LIVE_STREAM,
+        result_callback=result_callback,
         num_hands=2,
         min_hand_detection_confidence=0.7,
         min_hand_presence_confidence=0.7,
@@ -129,6 +212,7 @@ def main():
 
     with HandLandmarker.create_from_options(options) as landmarker:
         p_time = 0
+        fps_history = []
         start_time_ms = time.time() * 1000
         last_timestamp_ms = 0
         
@@ -138,51 +222,37 @@ def main():
                 print("Ignoring empty camera frame.")
                 break
             
-            # Flip the image horizontally for a selfie-view display
             image = cv2.flip(image, 1)
-            
-            # Convert BGR to RGB
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
             
-            # Calculate strictly monotonically increasing timestamps for VIDEO mode
             current_timestamp_ms = int(time.time() * 1000 - start_time_ms)
             if current_timestamp_ms <= last_timestamp_ms:
                 current_timestamp_ms = last_timestamp_ms + 1
             last_timestamp_ms = current_timestamp_ms
             
-            # Process the image
-            results = landmarker.detect_for_video(mp_image, current_timestamp_ms)
+            try:
+                landmarker.detect_async(mp_image, current_timestamp_ms)
+            except Exception as e:
+                pass # Skip frame if timestamp collision
+                
+            results = shared_state['results']
             
-            # Store active fingers and news
             active_fingers_texts = []
-            active_news_right = [] # Physical Right Hand (Mediapipe 'Left')
-            active_news_left = []  # Physical Left Hand (Mediapipe 'Right')
+            active_news_right = []
+            active_news_left = []
             
-            if results.hand_landmarks:
+            if results and results.hand_landmarks:
                 for hand_idx, hand_landmarks in enumerate(results.hand_landmarks):
-                    # Draw custom landmarks 
-                    draw_landmarks(image, hand_landmarks)
+                    if not show_content_mode:
+                        draw_landmarks(image, hand_landmarks)
                     
-                    # Determine handedness (Left or Right)
                     handedness_list = results.handedness[hand_idx]
                     handedness_label = handedness_list[0].category_name
                     
                     tip_ids = [4, 8, 12, 16, 20]
                     finger_names = ['T', 'I', 'M', 'R', 'P']
                     
-                    # Logic for Thumb
-                    # A more robust detection: determine root of palm (0) and tip of thumb (4)
-                    # and compare distance to index base (5) or pinky base (17)
-                    import math
-                    
-                    def get_distance(p1, p2):
-                        return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2)
-                    
-                    # The thumb tip is landmark 4.
-                    # Base of the index finger is landmark 5. 
-                    # Base of the pinky is 17.
-                    # If thumb tip is further from pinky base than the thumb IP joint (3), it's extended.
                     thumb_tip = hand_landmarks[4]
                     thumb_ip = hand_landmarks[3]
                     pinky_base = hand_landmarks[17]
@@ -190,50 +260,29 @@ def main():
                     dist_tip_to_pinky_base = get_distance(thumb_tip, pinky_base)
                     dist_ip_to_pinky_base = get_distance(thumb_ip, pinky_base)
                     
-                    # If the tip is significantly further away from the other side of the palm 
-                    # than the second joint of the thumb, it's open.
-                    
                     hand_fingers = []
                     
                     if dist_tip_to_pinky_base > dist_ip_to_pinky_base + 0.02:
                         active_fingers_texts.append('T')
                         hand_fingers.append('T')
                             
-                    # Logic for other 4 Fingers
                     for id in range(1, 5):
                         if hand_landmarks[tip_ids[id]].y < hand_landmarks[tip_ids[id] - 2].y:
                             active_fingers_texts.append(finger_names[id])
                             hand_fingers.append(finger_names[id])
                             
-                    # Track active news for both side panels
                     if hand_fingers:
                         if handedness_label == 'Left':  # Physical Right Hand
-                            news_mapping_right = {
-                                'T': 'Thumb: AI news',
-                                'I': 'Index: Geo political',
-                                'M': 'Middle: India news',
-                                'R': 'Ring: Indian frauds',
-                                'P': 'Pinky: AI & Startups'
-                            }
                             for finger in hand_fingers:
                                 news_text = news_mapping_right.get(finger, '')
                                 if news_text:
                                     active_news_right.append(news_text)
-                                    
                         elif handedness_label == 'Right':  # Physical Left Hand
-                            news_mapping_left = {
-                                'T': 'Thumb: India budget',
-                                'I': 'Index: MNC Jobs',
-                                'M': 'Middle: Claude AI',
-                                'R': 'Ring: Weather/AQI',
-                                'P': 'Pinky: Mobile Tech'
-                            }
                             for finger in hand_fingers:
                                 news_text = news_mapping_left.get(finger, '')
                                 if news_text:
                                     active_news_left.append(news_text)
                         
-                    # Central Hover Selection Logic with Debounce
                     if len(hand_fingers) == 1:
                         finger = hand_fingers[0]
                         current_hover_topic = news_mapping_right.get(finger) if handedness_label == 'Left' else news_mapping_left.get(finger)
@@ -244,32 +293,25 @@ def main():
                             hover_frames = 1
                             last_hovered_topic = current_hover_topic
                             
-                        # Lock in selection after actively holding for 10 frames
                         if hover_frames >= 10:
                             selected_topic_global = current_hover_topic
                             selected_topic_hand = handedness_label
                     else:
                         hover_frames = 0
                             
-                    # Punch to Read Logic with Debounce
-                    # If the selected topic's hand is currently making a fist (0 fingers)
                     if selected_topic_global and len(hand_fingers) == 0 and handedness_label == selected_topic_hand:
                         punch_frames += 1
                         if punch_frames >= 10 and not show_content_mode:
                             show_content_mode = True
-                            
-                            # Pick a random image on entry!
                             if selected_topic_global in loaded_images and len(loaded_images[selected_topic_global]) > 0:
                                 imgs = loaded_images[selected_topic_global]
                                 chosen = random.choice(imgs)
-                                
-                                # If we only generated 1 image for this topic (rate limits), dynamically apply a color filter so it looks different
                                 if len(imgs) == 1:
                                     hsv = cv2.cvtColor(chosen, cv2.COLOR_BGR2HSV)
-                                    h, s, v = cv2.split(hsv)
-                                    h = (h + random.randint(30, 150)) % 180 # Rotate hue
-                                    v = cv2.add(v, random.randint(-40, 40)) # Tweak brightness
-                                    current_display_image = cv2.cvtColor(cv2.merge((h, s, v)), cv2.COLOR_HSV2BGR)
+                                    h_c, s_c, v_c = cv2.split(hsv)
+                                    h_c = (h_c + random.randint(30, 150)) % 180
+                                    v_c = cv2.add(v_c, random.randint(-40, 40))
+                                    current_display_image = cv2.cvtColor(cv2.merge((h_c, s_c, v_c)), cv2.COLOR_HSV2BGR)
                                 else:
                                     current_display_image = chosen
                             else:
@@ -279,16 +321,19 @@ def main():
                             
             total_fingers = len(active_fingers_texts)
             
-            # Calculate FPS
             c_time = time.time()
-            fps = 1 / (c_time - p_time) if (c_time - p_time) > 0 else 0
+            current_fps = 1 / (c_time - p_time) if (c_time - p_time) > 0 else 0
             p_time = c_time
+            
+            fps_history.append(current_fps)
+            if len(fps_history) > 15:
+                fps_history.pop(0)
+            fps = sum(fps_history) / len(fps_history)
             
             h, w, c = image.shape
             
             # --- CONTENT READING MODE (PUNCH) ---
             if show_content_mode and selected_topic_global:
-                # Exit condition: 10 fingers held for 15 consecutive frames
                 if total_fingers == 10:
                     exit_frames += 1
                     if exit_frames >= 15:
@@ -297,151 +342,132 @@ def main():
                         selected_topic_hand = None
                         exit_frames = 0
                         hover_frames = 0
-                        continue # Skip drawing to exit immediately this frame
+                        continue
                 else:
                     exit_frames = 0
 
-                # Dim the background slightly
+                # Dim the background for deep focus (Dark Mode look)
                 overlay = image.copy()
-                cv2.rectangle(overlay, (0, 0), (w, h), (0, 0, 0), cv2.FILLED)
-                cv2.addWeighted(overlay, 0.6, image, 0.4, 0, image)
+                cv2.rectangle(overlay, (0, 0), (w, h), (10, 10, 15), cv2.FILLED)
+                cv2.addWeighted(overlay, 0.85, image, 0.15, 0, image)
                 
-                # Big central white box for reading
-                box_w, box_h = 1000, 480
+                # Central frosted glass modal
+                box_w, box_h = 1000, 520
                 cx, cy = int(w/2), int(h/2)
                 x1, y1 = cx - int(box_w/2), cy - int(box_h/2)
                 x2, y2 = cx + int(box_w/2), cy + int(box_h/2)
                 
-                cv2.rectangle(image, (x1, y1), (x2, y2), (255, 255, 255), cv2.FILLED)
-                cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 4) # Green reading border
+                draw_glass_panel(image, (x1, y1), (x2, y2), radius=25, alpha=0.8, bg_color=(25, 25, 30), border_color=(60, 60, 70))
                 
-                # Title
-                cv2.putText(image, f"IN-DEPTH: {selected_topic_global}", (x1 + 30, y1 + 60), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+                # Clean, minimal Title
+                cv2.putText(image, selected_topic_global.upper(), (x1 + 40, y1 + 70), 
+                            cv2.FONT_HERSHEY_DUPLEX, 1.2, (240, 240, 240), 2, cv2.LINE_AA)
                             
-                # Separator line
-                cv2.line(image, (x1 + 30, y1 + 80), (x2 - 30, y1 + 80), (200, 200, 200), 2)
+                # Subtle Separator
+                cv2.line(image, (x1 + 40, y1 + 100), (x2 - 40, y1 + 100), (80, 80, 80), 1, cv2.LINE_AA)
                 
-                # --- LIVE VISUALIZATION / IMAGES ---
+                # --- VISUALIZATION / IMAGES ---
                 vis_w, vis_h = 320, 320
                 vis_x = x2 - vis_w - 40
-                vis_y = y1 + 100
-                cv2.rectangle(image, (vis_x, vis_y), (vis_x + vis_w, vis_y + vis_h), (240, 240, 240), cv2.FILLED)
-                cv2.rectangle(image, (vis_x, vis_y), (vis_x + vis_w, vis_y + vis_h), (100, 100, 100), 2)
+                vis_y = y1 + 140
                 
                 if current_display_image is not None:
-                    # Draw actual topic image
-                    image[vis_y:vis_y+320, vis_x:vis_x+320] = current_display_image
-                else:
-                    # Fallback to animated chart
-                    cv2.putText(image, "Live Context Data", (vis_x + 10, vis_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,0), 2)
-                    t = time.time()
-                    bar_heights = [
-                        int(80 + 50 * math.sin(t * 2)), 
-                        int(120 + 40 * math.cos(t * 3)), 
-                        int(90 + 60 * math.sin(t * 1.5)), 
-                        int(140 + 30 * math.cos(t))
-                    ]
+                    img_to_show = cv2.resize(current_display_image, (vis_w, vis_h))
                     
-                    for i, bh in enumerate(bar_heights):
-                        bx = vis_x + 30 + i * 70
-                        by = vis_y + vis_h - 10 - bh
-                        color_shift = int(127 + 128 * math.sin(t * 4 + i))
-                        cv2.rectangle(image, (bx, by), (bx + 50, vis_y + vis_h - 10), (color_shift, 150, 255 - color_shift), cv2.FILLED)
-                        cv2.rectangle(image, (bx, by), (bx + 50, vis_y + vis_h - 10), (0, 0, 0), 2)
+                    # Rounded mask for image
+                    mask = np.zeros((vis_h, vis_w), dtype=np.uint8)
+                    draw_rounded_rect(mask, (0, 0), (vis_w, vis_h), 255, thickness=cv2.FILLED, radius=20)
+                    
+                    roi = image[vis_y:vis_y+vis_h, vis_x:vis_x+vis_w]
+                    idx = (mask == 255)
+                    roi[idx] = img_to_show[idx]
+                    
+                    # Image Border
+                    draw_rounded_rect(image, (vis_x, vis_y), (vis_x+vis_w, vis_y+vis_h), (80, 80, 80), thickness=1, radius=20)
+                else:
+                    draw_glass_panel(image, (vis_x, vis_y), (vis_x + vis_w, vis_y + vis_h), radius=20, alpha=0.4, bg_color=(40, 40, 45))
+                    cv2.putText(image, "Visualization", (vis_x + 85, vis_y + 160), cv2.FONT_HERSHEY_DUPLEX, 0.7, (150,150,150), 1, cv2.LINE_AA)
 
-                # Wrapped Content
+                # Wrapped Content Text
                 content = mock_content.get(selected_topic_global, "Content not found for this topic.")
-                # Dynamically set width so it stops right before the visualization starts
-                text_max_width = box_w - vis_w - 90
-                put_wrapped_text(image, content, (x1 + 30, y1 + 140), cv2.FONT_HERSHEY_SIMPLEX, 
-                                 0.8, (0, 0, 0), 2, text_max_width)
+                text_max_width = box_w - vis_w - 100
+                put_wrapped_text(image, content, (x1 + 40, y1 + 160), cv2.FONT_HERSHEY_DUPLEX, 
+                                 0.65, (200, 200, 200), 1, text_max_width)
                                  
                 # Instructions to exit
-                cv2.putText(image, "SHOW BOTH HANDS FULLY OPEN (10 FINGERS) TO EXIT", (cx - 380, y2 - 30), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 3)
+                exit_txt = "Show 10 fingers to close"
+                (tw, th), _ = cv2.getTextSize(exit_txt, cv2.FONT_HERSHEY_DUPLEX, 0.6, 1)
+                cv2.putText(image, exit_txt, (cx - int(tw/2), y2 - 25), 
+                            cv2.FONT_HERSHEY_DUPLEX, 0.6, (120, 120, 120), 1, cv2.LINE_AA)
                             
             # --- NORMAL UI MODE ---
             else:
-                # Display FPS
-                cv2.putText(image, f'FPS: {int(fps)}', (1100, 50), cv2.FONT_HERSHEY_SIMPLEX, 
-                            1, (255, 0, 0), 2)
+                # Subtle FPS in top right
+                cv2.putText(image, f'FPS: {int(fps)}', (w - 120, 40), cv2.FONT_HERSHEY_DUPLEX, 
+                            0.6, (150, 150, 150), 1, cv2.LINE_AA)
                             
-                # Top-Center Display for Overall Finger Count
-                cv2.rectangle(image, (int(w/2) - 150, 20), (int(w/2) + 150, 90), (0, 0, 0), cv2.FILLED)
-                cv2.putText(image, f'Total Fingers: {total_fingers}', (int(w/2) - 130, 65), cv2.FONT_HERSHEY_SIMPLEX, 
-                            0.9, (0, 255, 0), 3)
-                
-                # --- Right Hand News Box (Instant Tracking) ---
+                # --- Right Hand Panel ---
                 if active_news_right:
                     box_width_R = 300
-                    box_height_R = max(70, 40 * len(active_news_right) + 30)
+                    box_height_R = max(70, 40 * len(active_news_right) + 40)
+                    x1, y1 = w - box_width_R - 30, 80
+                    x2, y2 = w - 30, 80 + box_height_R
                     
-                    cv2.rectangle(image, (w - box_width_R - 20, 110), (w - 20, 110 + box_height_R), (255, 255, 255), cv2.FILLED)
-                    cv2.rectangle(image, (w - box_width_R - 20, 110), (w - 20, 110 + box_height_R), (0, 0, 0), 2)
+                    draw_glass_panel(image, (x1, y1), (x2, y2), radius=20, alpha=0.7)
+                    cv2.putText(image, f'Right Hand', (x1 + 20, y1 + 30), cv2.FONT_HERSHEY_DUPLEX, 
+                                0.55, (160, 160, 160), 1, cv2.LINE_AA)
                     
-                    cv2.putText(image, f'Right Hand Topics:', (w - box_width_R + 10, 135), cv2.FONT_HERSHEY_SIMPLEX, 
-                                0.6, (0, 0, 255), 2)
-                    
-                    y_pos = 165
+                    y_pos = y1 + 65
                     for news in active_news_right:
-                        cv2.putText(image, news, (w - box_width_R + 10, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 
-                                    0.6, (0, 0, 0), 2)
+                        is_active = (selected_topic_global == news)
+                        color = (255, 255, 255) if is_active else (180, 180, 180)
+                        thickness = 2 if is_active else 1
+                        cv2.putText(image, news, (x1 + 20, y_pos), cv2.FONT_HERSHEY_DUPLEX, 
+                                    0.55, color, thickness, cv2.LINE_AA)
                         y_pos += 35
-                else:
-                    box_width_R = 300
-                    cv2.rectangle(image, (w - box_width_R - 20, 110), (w - 20, 180), (255, 255, 255), cv2.FILLED)
-                    cv2.rectangle(image, (w - box_width_R - 20, 110), (w - 20, 180), (0, 0, 0), 2)
-                    
-                    cv2.putText(image, f'Right Hand Topics:', (w - box_width_R + 10, 135), cv2.FONT_HERSHEY_SIMPLEX, 
-                                0.6, (0, 0, 0), 2)
-                    cv2.putText(image, 'None', (w - box_width_R + 10, 165), cv2.FONT_HERSHEY_SIMPLEX, 
-                                0.6, (150, 150, 150), 1)
 
-                # --- Left Hand News Box (Instant Tracking) ---
+                # --- Left Hand Panel ---
                 if active_news_left:
                     box_width_L = 300
-                    box_height_L = max(70, 40 * len(active_news_left) + 30)
+                    box_height_L = max(70, 40 * len(active_news_left) + 40)
+                    x1, y1 = 30, 80
+                    x2, y2 = 30 + box_width_L, 80 + box_height_L
                     
-                    cv2.rectangle(image, (20, 110), (20 + box_width_L, 110 + box_height_L), (255, 255, 255), cv2.FILLED)
-                    cv2.rectangle(image, (20, 110), (20 + box_width_L, 110 + box_height_L), (0, 0, 0), 2)
+                    draw_glass_panel(image, (x1, y1), (x2, y2), radius=20, alpha=0.7)
+                    cv2.putText(image, f'Left Hand', (x1 + 20, y1 + 30), cv2.FONT_HERSHEY_DUPLEX, 
+                                0.55, (160, 160, 160), 1, cv2.LINE_AA)
                     
-                    cv2.putText(image, f'Left Hand Topics:', (30, 135), cv2.FONT_HERSHEY_SIMPLEX, 
-                                0.6, (0, 0, 255), 2)
-                    
-                    y_pos = 165
+                    y_pos = y1 + 65
                     for news in active_news_left:
-                        cv2.putText(image, news, (30, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 
-                                    0.6, (0, 0, 0), 2)
+                        is_active = (selected_topic_global == news)
+                        color = (255, 255, 255) if is_active else (180, 180, 180)
+                        thickness = 2 if is_active else 1
+                        cv2.putText(image, news, (x1 + 20, y_pos), cv2.FONT_HERSHEY_DUPLEX, 
+                                    0.55, color, thickness, cv2.LINE_AA)
                         y_pos += 35
-                else:
-                    box_width_L = 300
-                    cv2.rectangle(image, (20, 110), (20 + box_width_L, 180), (255, 255, 255), cv2.FILLED)
-                    cv2.rectangle(image, (20, 110), (20 + box_width_L, 180), (0, 0, 0), 2)
-                    
-                    cv2.putText(image, f'Left Hand Topics:', (30, 135), cv2.FONT_HERSHEY_SIMPLEX, 
-                                0.6, (0, 0, 0), 2)
-                    cv2.putText(image, 'None', (30, 165), cv2.FONT_HERSHEY_SIMPLEX, 
-                                0.6, (150, 150, 150), 1)
 
-                # --- Central Global "Selected News" Box ---
-                cv2.rectangle(image, (int(w/2) - 300, h - 80), (int(w/2) + 300, h - 20), (255, 255, 255), cv2.FILLED)
-                cv2.rectangle(image, (int(w/2) - 300, h - 80), (int(w/2) + 300, h - 20), (0, 0, 0), 3) # Thicker Border
+                # --- Floating Action Pill ---
+                pill_w = 400
+                pill_h = 50
+                px1, py1 = int(w/2) - int(pill_w/2), h - 80
+                px2, py2 = int(w/2) + int(pill_w/2), h - 30
                 
-                cv2.putText(image, 'SELECTED NEWS:', (int(w/2) - 280, h - 45), cv2.FONT_HERSHEY_SIMPLEX, 
-                            0.7, (0, 0, 255), 2)
-                            
                 if selected_topic_global:
-                    cv2.putText(image, selected_topic_global, (int(w/2) - 100, h - 45), cv2.FONT_HERSHEY_SIMPLEX, 
-                                0.8, (0, 150, 0), 2)
+                    draw_glass_panel(image, (px1, py1), (px2, py2), radius=25, alpha=0.85, bg_color=(35, 35, 45), border_color=(180, 180, 180))
+                    text = selected_topic_global
+                    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, 0.65, 1)
+                    cv2.putText(image, text, (int(w/2) - int(tw/2), py1 + 34), cv2.FONT_HERSHEY_DUPLEX, 
+                                0.65, (255, 255, 255), 1, cv2.LINE_AA)
                 else:
-                    cv2.putText(image, 'Raise exactly 1 finger to Select', (int(w/2) - 100, h - 45), cv2.FONT_HERSHEY_SIMPLEX, 
-                                0.7, (150, 150, 150), 1)
+                    # Subtle default state
+                    draw_glass_panel(image, (px1, py1), (px2, py2), radius=25, alpha=0.5, bg_color=(20, 20, 20), border_color=(80, 80, 80))
+                    text = "Select a topic"
+                    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, 0.6, 1)
+                    cv2.putText(image, text, (int(w/2) - int(tw/2), py1 + 34), cv2.FONT_HERSHEY_DUPLEX, 
+                                0.6, (150, 150, 150), 1, cv2.LINE_AA)
             
-            # Show the final image
             cv2.imshow('Precise Finger Counter', image)
             
-            # Break loop on 'q' or ESC
             key = cv2.waitKey(1) & 0xFF
             if key == 27 or key == ord('q'):
                 break
