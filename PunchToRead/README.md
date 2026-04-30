@@ -18,4 +18,10 @@ Inside the Reading Mode, users are treated to a beautifully wrapped, multi-parag
 **4. Two-Handed Exit**
 To exit the immersive reading article, users must deliberately hold up both hands completely open (all 10 fingers). Upon doing so for a fraction of a second, the article vanishes and control is gracefully returned to the main dashboard. 
 
+### Recent Updates (Version 2.0)
+- **Apple-like Minimalistic UI**: Replaced the clunky solid boxes with elegant, frosted glass panels (glassmorphism) and perfectly rounded corners, giving the interface a sleek, premium, macOS-inspired aesthetic.
+- **Immersive Dark Mode**: "Punching" to read now dynamically dims the background feed, creating a highly focused dark mode reading environment with a beautifully padded, translucent reading modal.
+- **Massive Performance Boost**: We completely decoupled the heavy AI hand-tracking from the camera feed by utilizing MediaPipe's asynchronous `LIVE_STREAM` mode. The camera now runs at a buttery-smooth frame rate regardless of inference speed.
+- **Stable FPS & Text Optimization**: Added a moving average FPS smoother and implemented a text-wrapping caching system to entirely eliminate the stuttering caused by heavy text recalculations.
+
 PunchToRead is a robust, dynamic, and incredibly satisfying dive into the future of human-computer interaction.
