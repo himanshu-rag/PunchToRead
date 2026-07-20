@@ -19,9 +19,15 @@ Inside the Reading Mode, users are treated to a beautifully wrapped, multi-parag
 To exit the immersive reading article, users must deliberately hold up both hands completely open (all 10 fingers). Upon doing so for a fraction of a second, the article vanishes and control is gracefully returned to the main dashboard. 
 
 ### Recent Updates (Version 2.0)
-- **Apple-like Minimalistic UI**: Replaced the clunky solid boxes with elegant, frosted glass panels (glassmorphism) and perfectly rounded corners, giving the interface a sleek, premium, macOS-inspired aesthetic.
-- **Immersive Dark Mode**: "Punching" to read now dynamically dims the background feed, creating a highly focused dark mode reading environment with a beautifully padded, translucent reading modal.
-- **Massive Performance Boost**: We completely decoupled the heavy AI hand-tracking from the camera feed by utilizing MediaPipe's asynchronous `LIVE_STREAM` mode. The camera now runs at a buttery-smooth frame rate regardless of inference speed.
-- **Stable FPS & Text Optimization**: Added a moving average FPS smoother and implemented a text-wrapping caching system to entirely eliminate the stuttering caused by heavy text recalculations.
+- **Apple-like Minimalistic UI**: Elegant, frosted glass panels (glassmorphism) and perfectly rounded corners, giving the interface a sleek, premium, macOS-inspired aesthetic.
+- **Immersive Dark Mode**: Reading mode dynamically dims the background feed, creating a highly focused dark mode reading environment.
+- **Massive Performance Boost**: We completely decoupled the heavy AI hand-tracking from the camera feed by utilizing MediaPipe's asynchronous `LIVE_STREAM` mode.
+
+### Recent Updates (Version 3.0: The Gestural Update)
+- **New Main Menu**: Upon launch, you're greeted with a sleek Main Menu! Hold 1 finger for News Mode, or 2 fingers for the all-new Drawing Mode.
+- **Mid-Air Drawing Mode**: A fully interactive drawing canvas! Hold your Index finger to draw with a glowing cursor, add your Middle finger (Peace sign) to hover/move without drawing, and open your whole hand to clear the canvas.
+- **Flick-to-Swipe Navigation**: Inside News Mode, you can now seamlessly swipe left or right with your hand to change topics instantly. Powered by velocity-tracking heuristics and an anti-jitter moving average filter.
+- **3D Pinch-to-Exit**: Closing content or exiting modes is now done effortlessly via a natural 3-finger pinch gesture (Thumb, Index, Middle), utilizing 3D Euclidean distance calculations for extreme precision.
+- **Magnetic Parallax**: The frosted glass UI panels now subtlely track your wrist position, giving a magnetic, tactile parallax effect that brings the interface to life.
 
 PunchToRead is a robust, dynamic, and incredibly satisfying dive into the future of human-computer interaction.
