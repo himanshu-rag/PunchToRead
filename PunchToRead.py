@@ -133,6 +133,8 @@ def main():
     VisionRunningMode = mp.tasks.vision.RunningMode
 
     app_mode = 'MAIN_MENU'
+    ticker_offset = 0.0
+    article_frame_count = 0
     menu_selection_choice = None
     menu_selection_frames = 0
     layers = []
@@ -395,6 +397,7 @@ def main():
                             punch_frames += 1
                             if punch_frames >= 10:
                                 app_mode = 'CONTENT_MODE'
+                                article_frame_count = 0
                                 update_display_image()
                                 wrist_x_history.clear()
                                 punch_frames = 0
@@ -429,6 +432,7 @@ def main():
                                     swipe_cooldown_frames = 25
                                     wrist_x_history.clear()
                                     update_display_image()
+                                    article_frame_count = 0
                                     transition_frames = 15
                                     transition_direction = 1
                                     swipe_arrow_frames = 15
@@ -439,6 +443,7 @@ def main():
                                     swipe_cooldown_frames = 25
                                     wrist_x_history.clear()
                                     update_display_image()
+                                    article_frame_count = 0
                                     transition_frames = 15
                                     transition_direction = -1
                                     swipe_arrow_frames = 15
@@ -826,8 +831,8 @@ def main():
 
                 pill_w = 400
                 pill_h = 50
-                px1, py1 = int(w/2) - int(pill_w/2), h - 80
-                px2, py2 = int(w/2) + int(pill_w/2), h - 30
+                px1, py1 = int(w/2) - int(pill_w/2), h - 100
+                px2, py2 = int(w/2) + int(pill_w/2), h - 50
                 if selected_topic_global:
                     draw_glass_panel(image, (px1, py1), (px2, py2), radius=25, alpha=0.85, bg_color=(35, 35, 45), border_color=(180, 180, 180))
                     text = selected_topic_global
@@ -839,7 +844,18 @@ def main():
                     (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, 0.6, 1)
                     cv2.putText(image, text, (int(w/2) - int(tw/2), py1 + 34), cv2.FONT_HERSHEY_DUPLEX, 0.6, (150, 150, 150), 1, cv2.LINE_AA)
                     
+                # News Ticker Tape at bottom
+                ticker_offset -= 4.0
+                if ticker_offset < -2500: ticker_offset = w
+                
+                ticker_h = 40
+                draw_glass_panel(image, (0, h - ticker_h), (w, h), radius=0, alpha=0.85, bg_color=(15, 15, 20), border_color=(40, 40, 50))
+                ticker_text = "BREAKING NEWS  |  AI STARTUPS RAISE BILLIONS  |  GLOBAL MARKETS SURGE  |  NEW TECH INNOVATIONS  |  WEATHER WARNINGS ISSUED  |  MNC JOBS ON THE RISE  |  " * 3
+                cv2.putText(image, ticker_text, (int(ticker_offset), h - 13), cv2.FONT_HERSHEY_DUPLEX, 0.6, (200, 220, 255), 1, cv2.LINE_AA)
+                
+                    
             elif app_mode == 'CONTENT_MODE':
+                article_frame_count += 1
                 overlay = image.copy()
                 cv2.rectangle(overlay, (0, 0), (w, h), (10, 10, 15), cv2.FILLED)
                 cv2.addWeighted(overlay, 0.85, image, 0.15, 0, image)
@@ -865,7 +881,30 @@ def main():
                 vis_y = y1 + 140
                 
                 if current_display_image is not None:
-                    img_to_show = cv2.resize(current_display_image, (vis_w, vis_h))
+                    # Ken Burns Effect (Slow Pan/Zoom)
+                    scale = 1.0 + (article_frame_count * 0.0008)
+                    if scale > 1.25: scale = 1.25
+                    
+                    orig_h, orig_w = current_display_image.shape[:2]
+                    new_w = int(orig_w / scale)
+                    new_h = int(orig_h / scale)
+                    cx_img, cy_img = orig_w // 2, orig_h // 2
+                    
+                    # Slight Pan based on time
+                    pan_x = int(math.sin(article_frame_count * 0.01) * (orig_w * 0.05))
+                    
+                    x1_img = max(0, cx_img - new_w // 2 + pan_x)
+                    y1_img = max(0, cy_img - new_h // 2)
+                    x2_img = min(orig_w, x1_img + new_w)
+                    y2_img = min(orig_h, y1_img + new_h)
+                    
+                    # Ensure dimensions match
+                    cropped = current_display_image[y1_img:y2_img, x1_img:x2_img]
+                    if cropped.size > 0:
+                        img_to_show = cv2.resize(cropped, (vis_w, vis_h))
+                    else:
+                        img_to_show = cv2.resize(current_display_image, (vis_w, vis_h))
+                        
                     mask = np.zeros((vis_h, vis_w), dtype=np.uint8)
                     draw_rounded_rect(mask, (0, 0), (vis_w, vis_h), 255, thickness=cv2.FILLED, radius=20)
                     valid_x1, valid_y1 = max(0, vis_x), max(0, vis_y)
