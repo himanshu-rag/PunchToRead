@@ -23,94 +23,85 @@ def get_distance(p1, p2):
 def get_distance3d(p1, p2):
     return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2 + (p1.z - p2.z)**2)
 
+def ease_out_cubic(t):
+    t = min(1.0, max(0.0, t))
+    return 1.0 - (1.0 - t) ** 3
+
 def draw_rounded_rect(img, top_left, bottom_right, color, thickness=cv2.FILLED, radius=15):
-    """Draws a rounded rectangle using OpenCV."""
     x1, y1 = top_left
     x2, y2 = bottom_right
-    
     if thickness >= 0:
-        # Draw straight lines
         cv2.line(img, (x1 + radius, y1), (x2 - radius, y1), color, thickness, cv2.LINE_AA)
         cv2.line(img, (x1 + radius, y2), (x2 - radius, y2), color, thickness, cv2.LINE_AA)
         cv2.line(img, (x1, y1 + radius), (x1, y2 - radius), color, thickness, cv2.LINE_AA)
         cv2.line(img, (x2, y1 + radius), (x2, y2 - radius), color, thickness, cv2.LINE_AA)
-        
-        # Draw arcs
         cv2.ellipse(img, (x1 + radius, y1 + radius), (radius, radius), 180, 0, 90, color, thickness, cv2.LINE_AA)
         cv2.ellipse(img, (x2 - radius, y1 + radius), (radius, radius), 270, 0, 90, color, thickness, cv2.LINE_AA)
         cv2.ellipse(img, (x2 - radius, y2 - radius), (radius, radius), 0, 0, 90, color, thickness, cv2.LINE_AA)
         cv2.ellipse(img, (x1 + radius, y2 - radius), (radius, radius), 90, 0, 90, color, thickness, cv2.LINE_AA)
     else:
-        # Fill the center body
         cv2.rectangle(img, (x1 + radius, y1), (x2 - radius, y2), color, cv2.FILLED)
         cv2.rectangle(img, (x1, y1 + radius), (x2, y2 - radius), color, cv2.FILLED)
-        # Fill the corners
         cv2.ellipse(img, (x1 + radius, y1 + radius), (radius, radius), 180, 0, 90, color, cv2.FILLED, cv2.LINE_AA)
         cv2.ellipse(img, (x2 - radius, y1 + radius), (radius, radius), 270, 0, 90, color, cv2.FILLED, cv2.LINE_AA)
         cv2.ellipse(img, (x2 - radius, y2 - radius), (radius, radius), 0, 0, 90, color, cv2.FILLED, cv2.LINE_AA)
         cv2.ellipse(img, (x1 + radius, y2 - radius), (radius, radius), 90, 0, 90, color, cv2.FILLED, cv2.LINE_AA)
 
-def draw_glass_panel(img, top_left, bottom_right, radius=15, alpha=0.6, bg_color=(30, 30, 30), border_color=(100, 100, 100)):
+def draw_glass_panel(img, top_left, bottom_right, radius=15, alpha=0.55, bg_color=(40, 40, 40), border_color=(120, 120, 120)):
     x1, y1 = top_left
     x2, y2 = bottom_right
     h, w = img.shape[:2]
-    
     valid_x1, valid_y1 = max(0, x1), max(0, y1)
     valid_x2, valid_y2 = min(w, x2), min(h, y2)
-    
     if valid_x2 <= valid_x1 or valid_y2 <= valid_y1: return
-    
     roi = img[valid_y1:valid_y2, valid_x1:valid_x2]
     panel_w, panel_h = x2 - x1, y2 - y1
-    
     mask = np.zeros((panel_h, panel_w), dtype=np.uint8)
     draw_rounded_rect(mask, (0, 0), (panel_w, panel_h), 255, thickness=cv2.FILLED, radius=radius)
-    
     mx1, mx2 = valid_x1 - x1, valid_x2 - x1
     my1, my2 = valid_y1 - y1, valid_y2 - y1
     valid_mask = mask[my1:my2, mx1:mx2]
-    
-    colored_roi = roi.copy()
-    idx = (valid_mask == 255)
-    colored_roi[idx] = bg_color
-    
-    cv2.addWeighted(colored_roi, alpha, roi, 1 - alpha, 0, roi)
+    roi_h, roi_w = roi.shape[:2]
+    if roi_w > 0 and roi_h > 0:
+        small_roi = cv2.resize(roi, (max(1, roi_w // 4), max(1, roi_h // 4)), interpolation=cv2.INTER_LINEAR)
+        small_blurred = cv2.GaussianBlur(small_roi, (15, 15), 0)
+        blurred = cv2.resize(small_blurred, (roi_w, roi_h), interpolation=cv2.INTER_LINEAR)
+    else:
+        blurred = roi
+    tint = np.full_like(roi, bg_color, dtype=np.uint8)
+    frosted = cv2.addWeighted(tint, alpha, blurred, 1 - alpha, 0)
+    mask_inv = cv2.bitwise_not(valid_mask)
+    bg_keep = cv2.bitwise_and(roi, roi, mask=mask_inv)
+    fg_glass = cv2.bitwise_and(frosted, frosted, mask=valid_mask)
+    roi[:] = cv2.add(bg_keep, fg_glass)
     draw_rounded_rect(img, top_left, bottom_right, border_color, thickness=1, radius=radius)
 
 def draw_landmarks(image, hand_landmarks):
     h, w, c = image.shape
-    # Draw subtle connections
     for connection in HAND_CONNECTIONS:
         p1 = hand_landmarks[connection[0]]
         p2 = hand_landmarks[connection[1]]
         x1, y1 = int(p1.x * w), int(p1.y * h)
         x2, y2 = int(p2.x * w), int(p2.y * h)
         cv2.line(image, (x1, y1), (x2, y2), (255, 255, 255), 1, cv2.LINE_AA)
-        
-    # Draw subtle elegant dots
     for landmark in hand_landmarks:
         x, y = int(landmark.x * w), int(landmark.y * h)
         cv2.circle(image, (x, y), 3, (220, 220, 220), cv2.FILLED, cv2.LINE_AA)
 
 wrapped_content_cache = {}
-
 def get_wrapped_lines(text, font, font_scale, thickness, max_width):
     cache_key = (text, font, font_scale, thickness, max_width)
-    if cache_key in wrapped_content_cache:
-        return wrapped_content_cache[cache_key]
-    
+    if cache_key in wrapped_content_cache: return wrapped_content_cache[cache_key]
     words = text.split(' ')
     lines = []
     current_line = words[0]
     for word in words[1:]:
         (w, h), _ = cv2.getTextSize(current_line + " " + word, font, font_scale, thickness)
-        if w < max_width:
-            current_line += " " + word
+        if w < max_width: current_line += " " + word
         else:
             lines.append(current_line)
             current_line = word
     lines.append(current_line)
-    
     (_, h), _ = cv2.getTextSize("Ay", font, font_scale, thickness)
     wrapped_content_cache[cache_key] = (lines, h)
     return lines, h
@@ -123,18 +114,43 @@ def put_wrapped_text(img, text, position, font, font_scale, color, thickness, ma
         y += int(h * 1.6)
 
 def main():
-    # Setup Tasks API options
+    def generate_palette():
+        # Curated 14 modern colors (BGR)
+        return [
+            # Column 0
+            [(255, 255, 255), (180, 180, 180), (100, 100, 100), (30, 30, 30), 
+             (200, 100, 100), (100, 200, 100), (100, 100, 200)],
+            # Column 1
+            [(100, 200, 255), (255, 200, 100), (255, 100, 200), (150, 255, 150),
+             (200, 150, 255), (255, 150, 100), (50, 150, 255)]
+        ]
+        
+    color_palette = generate_palette()
+    
     BaseOptions = mp.tasks.BaseOptions
     HandLandmarker = mp.tasks.vision.HandLandmarker
     HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
     VisionRunningMode = mp.tasks.vision.RunningMode
 
-    # State variables
     app_mode = 'MAIN_MENU'
     menu_selection_choice = None
     menu_selection_frames = 0
-    canvas = None
+    layers = []
+    active_layer_idx = 0
+    MAX_LAYERS = 5
+    layer_history = {i: [] for i in range(MAX_LAYERS)}
+    was_drawing = False
+    current_stroke = []
+    stroke_hold_frames = 0
     prev_draw_x, prev_draw_y = 0, 0
+    
+    current_draw_color = (255, 200, 100) # Light blue in BGR
+    current_draw_tool = 'NEON'
+    ui_hover_target = None
+    ui_hover_frames = 0
+    
+    mode_enter_frame = 0
+    prev_rendered_mode = 'MAIN_MENU'
     
     selected_topic_global = None
     selected_topic_hand = None
@@ -144,7 +160,7 @@ def main():
             self.x = x; self.y = y; self.z = z
             
     hand_ema = {}
-    EMA_ALPHA = 0.7  # 0.7 for high responsiveness, low lag
+    EMA_ALPHA = 0.4
     
     hover_frames = 0
     punch_frames = 0
@@ -154,6 +170,8 @@ def main():
     swipe_cooldown_frames = 0
     transition_frames = 0
     transition_direction = 1
+    swipe_arrow_frames = 0
+    swipe_arrow_dir = 1
     
     wrist_x_history = []
     current_wrist_x = 0.5
@@ -164,7 +182,6 @@ def main():
         'Index: MNC Jobs', 'Middle: Claude AI', 'Ring: Weather/AQI', 'Pinky: Mobile Tech'
     ]
     
-    # Pre-loading Generated AI Images
     art_dir = "./resources"
     image_paths = {
         'Thumb: AI news': glob.glob(f"{art_dir}/ai_news_*.png"),
@@ -189,7 +206,6 @@ def main():
                 loaded_images[k].append(img)
                 
     current_display_image = None
-    
     def update_display_image():
         nonlocal current_display_image
         if selected_topic_global in loaded_images and len(loaded_images[selected_topic_global]) > 0:
@@ -201,12 +217,9 @@ def main():
                 h_c = (h_c + random.randint(30, 150)) % 180
                 v_c = cv2.add(v_c, random.randint(-40, 40))
                 current_display_image = cv2.cvtColor(cv2.merge((h_c, s_c, v_c)), cv2.COLOR_HSV2BGR)
-            else:
-                current_display_image = chosen
-        else:
-            current_display_image = None
+            else: current_display_image = chosen
+        else: current_display_image = None
             
-    # Mock content library
     mock_content = {
         'Thumb: AI news': "OpenAI drops new GPT-5 model focusing on advanced reasoning. In parallel, Meta has released Llama 4 to aggressive open-source adoption. The AI sector is experiencing a massive boom globally with trillion-dollar infrastructure investments spanning data centers and semiconductor manufacturing. Experts believe we are approaching a critical inflection point in machine intelligence.",
         'Index: Geo political': "Global summits conclude with sweeping new trade agreements aiming to stabilize international markets. Meanwhile, cross-border tensions have noticeably eased in eastern Europe following a series of diplomatic breakthroughs. Analysts predict these developments will lead to a 15% increase in global exports over the next fiscal year as supply chains regularize.",
@@ -220,23 +233,9 @@ def main():
         'Pinky: Mobile Tech': "Apple and Samsung have jointly showcased functional prototypes of fully foldable tablets equipped with transparent micro-LED displays at the latest keynote. These devices utilize novel polymer batteries that charge fully in under 3 minutes. Consumer release is eagerly anticipated for late 2027."
     }
 
-    news_mapping_right = {
-        'T': 'Thumb: AI news',
-        'I': 'Index: Geo political',
-        'M': 'Middle: India news',
-        'R': 'Ring: Indian frauds',
-        'P': 'Pinky: AI & Startups'
-    }
-    
-    news_mapping_left = {
-        'T': 'Thumb: India budget',
-        'I': 'Index: MNC Jobs',
-        'M': 'Middle: Claude AI',
-        'R': 'Ring: Weather/AQI',
-        'P': 'Pinky: Mobile Tech'
-    }
+    news_mapping_right = { 'T': 'Thumb: AI news', 'I': 'Index: Geo political', 'M': 'Middle: India news', 'R': 'Ring: Indian frauds', 'P': 'Pinky: AI & Startups' }
+    news_mapping_left = { 'T': 'Thumb: India budget', 'I': 'Index: MNC Jobs', 'M': 'Middle: Claude AI', 'R': 'Ring: Weather/AQI', 'P': 'Pinky: Mobile Tech' }
 
-    # Initialize webcam
     cap = cv2.VideoCapture(0)
     time.sleep(1)
     
@@ -265,9 +264,7 @@ def main():
         
         while cap.isOpened():
             success, image = cap.read()
-            if not success:
-                print("Ignoring empty camera frame.")
-                break
+            if not success: break
             
             image = cv2.flip(image, 1)
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -278,10 +275,8 @@ def main():
                 current_timestamp_ms = last_timestamp_ms + 1
             last_timestamp_ms = current_timestamp_ms
             
-            try:
-                landmarker.detect_async(mp_image, current_timestamp_ms)
-            except Exception as e:
-                pass # Skip frame if timestamp collision
+            try: landmarker.detect_async(mp_image, current_timestamp_ms)
+            except Exception as e: pass
                 
             results = shared_state['results']
             
@@ -322,8 +317,7 @@ def main():
                     index_tip = hand_landmarks[8]
                     middle_tip = hand_landmarks[12]
                     
-                    # Accurate 3D pinch detection
-                    if get_distance3d(thumb_tip, index_tip) < 0.05 and get_distance3d(thumb_tip, middle_tip) < 0.05 and get_distance3d(index_tip, middle_tip) < 0.05:
+                    if get_distance3d(thumb_tip, index_tip) < 0.07 and get_distance3d(thumb_tip, middle_tip) < 0.07 and get_distance3d(index_tip, middle_tip) < 0.07:
                         pinch_detected = True
                     
                     dist_tip_to_pinky_base = get_distance3d(thumb_tip, pinky_base)
@@ -342,7 +336,6 @@ def main():
                             active_fingers_texts.append(finger_names[id])
                             hand_fingers.append(finger_names[id])
                             
-                    # MODE LOGIC
                     if app_mode == 'MAIN_MENU':
                         if len(hand_fingers) == 1 and 'I' in hand_fingers:
                             if menu_selection_choice == 'NEWS_MENU':
@@ -359,8 +352,9 @@ def main():
                                 if menu_selection_frames >= 15:
                                     app_mode = 'DRAW_MODE'
                                     menu_selection_frames = 0
-                                    if canvas is None:
-                                        canvas = np.zeros_like(image)
+                                    if len(layers) == 0:
+                                        layers.append({'name': 'Layer 1', 'canvas': np.zeros_like(image), 'visible': True})
+                                        active_layer_idx = 0
                             else:
                                 menu_selection_choice = 'DRAW_MODE'
                                 menu_selection_frames = 1
@@ -373,26 +367,21 @@ def main():
                             if exit_frames > 15:
                                 app_mode = 'MAIN_MENU'
                                 exit_frames = 0
-                        else:
-                            exit_frames = 0
+                        else: exit_frames = 0
                             
-                        if handedness_label == 'Left':  # Physical Right Hand
+                        if handedness_label == 'Left':
                             for finger in hand_fingers:
                                 news_text = news_mapping_right.get(finger, '')
-                                if news_text:
-                                    active_news_right.append(news_text)
-                        elif handedness_label == 'Right':  # Physical Left Hand
+                                if news_text: active_news_right.append(news_text)
+                        elif handedness_label == 'Right':
                             for finger in hand_fingers:
                                 news_text = news_mapping_left.get(finger, '')
-                                if news_text:
-                                    active_news_left.append(news_text)
+                                if news_text: active_news_left.append(news_text)
                         
                         if len(hand_fingers) == 1:
                             finger = hand_fingers[0]
                             current_hover_topic = news_mapping_right.get(finger) if handedness_label == 'Left' else news_mapping_left.get(finger)
-                            
-                            if current_hover_topic == last_hovered_topic:
-                                hover_frames += 1
+                            if current_hover_topic == last_hovered_topic: hover_frames += 1
                             else:
                                 hover_frames = 1
                                 last_hovered_topic = current_hover_topic
@@ -400,8 +389,7 @@ def main():
                             if hover_frames >= 10:
                                 selected_topic_global = current_hover_topic
                                 selected_topic_hand = handedness_label
-                        else:
-                            hover_frames = 0
+                        else: hover_frames = 0
                                 
                         if selected_topic_global and len(hand_fingers) == 0 and handedness_label == selected_topic_hand:
                             punch_frames += 1
@@ -410,50 +398,51 @@ def main():
                                 update_display_image()
                                 wrist_x_history.clear()
                                 punch_frames = 0
-                        elif len(hand_fingers) > 0:
-                            punch_frames = 0
+                        elif len(hand_fingers) > 0: punch_frames = 0
                             
                     elif app_mode == 'CONTENT_MODE':
                         if pinch_detected:
                             exit_frames += 1
                             if exit_frames >= 15:
-                                app_mode = 'NEWS_MENU'
+                                app_mode = 'MAIN_MENU'
                                 selected_topic_global = None
                                 selected_topic_hand = None
                                 exit_frames = 0
                                 hover_frames = 0
-                        else:
-                            exit_frames = 0
+                        else: exit_frames = 0
                             
                         current_wrist_x = hand_landmarks[0].x
                         if swipe_cooldown_frames > 0:
                             swipe_cooldown_frames -= 1
                             wrist_x_history.clear()
                         else:
-                            wrist_x = hand_landmarks[0].x
-                            wrist_x_history.append(wrist_x)
+                            finger_x = hand_landmarks[8].x
+                            wrist_x_history.append(finger_x)
                             
-                            if len(wrist_x_history) > 6:
-                                wrist_x_history.pop(0)
+                            if len(wrist_x_history) > 4: wrist_x_history.pop(0)
                                 
-                            if len(wrist_x_history) == 6:
+                            if len(wrist_x_history) == 4:
                                 dx = wrist_x_history[-1] - wrist_x_history[0]
-                                if dx < -0.10: # Fast swipe left
+                                if dx < -0.07: # Swipe left
                                     current_idx = TOPICS_ORDER.index(selected_topic_global)
                                     selected_topic_global = TOPICS_ORDER[(current_idx + 1) % len(TOPICS_ORDER)]
-                                    swipe_cooldown_frames = 60
+                                    swipe_cooldown_frames = 25
                                     wrist_x_history.clear()
                                     update_display_image()
                                     transition_frames = 15
                                     transition_direction = 1
-                                elif dx > 0.10: # Fast swipe right
+                                    swipe_arrow_frames = 15
+                                    swipe_arrow_dir = 1
+                                elif dx > 0.07: # Swipe right
                                     current_idx = TOPICS_ORDER.index(selected_topic_global)
                                     selected_topic_global = TOPICS_ORDER[(current_idx - 1) % len(TOPICS_ORDER)]
-                                    swipe_cooldown_frames = 60
+                                    swipe_cooldown_frames = 25
                                     wrist_x_history.clear()
                                     update_display_image()
                                     transition_frames = 15
                                     transition_direction = -1
+                                    swipe_arrow_frames = 15
+                                    swipe_arrow_dir = -1
                                     
                     elif app_mode == 'DRAW_MODE':
                         if pinch_detected:
@@ -462,30 +451,266 @@ def main():
                                 app_mode = 'MAIN_MENU'
                                 exit_frames = 0
                                 prev_draw_x, prev_draw_y = 0, 0
-                        else:
-                            exit_frames = 0
+                                ui_hover_frames = 0
+                                ui_hover_target = None
+                        else: exit_frames = 0
+                        
+                        def recognize_shape(pts):
+                            if len(pts) < 15: return None
+                            points = np.array([[p[0], p[1]] for p in pts], dtype=np.int32)
+                            dist_start_end = math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1])
                             
-                        if len(hand_fingers) == 5:
-                            hover_frames += 1
-                            if hover_frames > 15:
-                                if canvas is not None:
-                                    canvas.fill(0)
-                                hover_frames = 0
-                        else:
-                            hover_frames = 0
+                            x, y, w, h = cv2.boundingRect(points)
+                            diag = math.hypot(w, h)
+                            if diag < 20: return None # too small
                             
+                            # Is it a closed shape?
+                            is_closed = dist_start_end < (diag * 0.6)
+                            
+                            if is_closed:
+                                # Use Convex Hull to eliminate natural hand jitters that inflate perimeter
+                                hull = cv2.convexHull(points)
+                                area = cv2.contourArea(hull)
+                                perimeter = cv2.arcLength(hull, True)
+                                if perimeter == 0: return None
+                                
+                                circularity = 4 * math.pi * area / (perimeter * perimeter)
+                                epsilon = 0.05 * perimeter
+                                approx = cv2.approxPolyDP(hull, epsilon, True)
+                                
+                                if circularity > 0.8:
+                                    (cx, cy), radius = cv2.minEnclosingCircle(hull)
+                                    return ('CIRCLE', (int(cx), int(cy)), int(radius))
+                                elif len(approx) == 4:
+                                    return ('RECTANGLE', approx)
+                                elif len(approx) == 3:
+                                    return ('TRIANGLE', approx)
+                                elif len(approx) > 4: # Fallback to circle
+                                    (cx, cy), radius = cv2.minEnclosingCircle(hull)
+                                    return ('CIRCLE', (int(cx), int(cy)), int(radius))
+                            else:
+                                arc_len = cv2.arcLength(points, False)
+                                if arc_len > 0 and dist_start_end / arc_len > 0.8:
+                                    return ('LINE', (pts[0][0], pts[0][1]), (pts[-1][0], pts[-1][1]))
+                            return None
+                            
+                        def draw_recognized_shape(canvas, shape_data, color, thickness, tool):
+                            if not shape_data: return
+                            stype = shape_data[0]
+                            if stype == 'CIRCLE':
+                                _, center, radius = shape_data
+                                if tool == 'NEON':
+                                    halo_color = (max(0, color[0]-50), max(0, color[1]-50), max(0, color[2]-50))
+                                    cv2.circle(canvas, center, radius, halo_color, max(1, thickness*4), cv2.LINE_AA)
+                                    cv2.circle(canvas, center, radius, color, max(1, thickness*2), cv2.LINE_AA)
+                                    cv2.circle(canvas, center, radius, (255, 255, 255), max(1, thickness//2), cv2.LINE_AA)
+                                else:
+                                    cv2.circle(canvas, center, radius, color, max(2, thickness), cv2.LINE_AA)
+                            elif stype in ['RECTANGLE', 'TRIANGLE']:
+                                approx = shape_data[1]
+                                if tool == 'NEON':
+                                    halo_color = (max(0, color[0]-50), max(0, color[1]-50), max(0, color[2]-50))
+                                    cv2.drawContours(canvas, [approx], 0, halo_color, max(1, thickness*4), cv2.LINE_AA)
+                                    cv2.drawContours(canvas, [approx], 0, color, max(1, thickness*2), cv2.LINE_AA)
+                                    cv2.drawContours(canvas, [approx], 0, (255, 255, 255), max(1, thickness//2), cv2.LINE_AA)
+                                else:
+                                    cv2.drawContours(canvas, [approx], 0, color, max(2, thickness), cv2.LINE_AA)
+                            elif stype == 'LINE':
+                                _, pt1, pt2 = shape_data
+                                if tool == 'NEON':
+                                    halo_color = (max(0, color[0]-50), max(0, color[1]-50), max(0, color[2]-50))
+                                    cv2.line(canvas, pt1, pt2, halo_color, max(1, thickness*4), cv2.LINE_AA)
+                                    cv2.line(canvas, pt1, pt2, color, max(1, thickness*2), cv2.LINE_AA)
+                                    cv2.line(canvas, pt1, pt2, (255, 255, 255), max(1, thickness//2), cv2.LINE_AA)
+                                else:
+                                    cv2.line(canvas, pt1, pt2, color, max(2, thickness), cv2.LINE_AA)
+                        
+                        canvas = layers[active_layer_idx]['canvas'] if layers else None
                         cx, cy = int(index_tip.x * w), int(index_tip.y * h)
                         
-                        if len(hand_fingers) == 1 and 'I' in hand_fingers:
+                        hover_targets = []
+                        # Color Panel Targets (Right Side)
+                        cp_w, cp_h = 280, 420
+                        cp_x1, cp_y1 = w - 310, int(h/2) - int(cp_h/2)
+                        
+                        gx, gy = cp_x1 + 60, cp_y1 + 60
+                        for c in range(2):
+                            for r in range(7):
+                                cx_c = gx + c * 80
+                                cy_c = gy + r * 50
+                                hover_targets.append({
+                                    'name': f'COLOR_{c}_{r}', 
+                                    'box': (cx_c - 20, cy_c - 20, cx_c + 20, cy_c + 20), 
+                                    'color': color_palette[c][r]
+                                })
+                        
+                        # Action buttons moved to Project Board (Left Side)
+                        # Horizontal targets (Brushes)
+                        h_start_x = int(w/2) - 250
+                        h_y = h - 90
+                        x_step = 500 / 6
+                        tools_list = ['PEN', 'MARKER', 'NEON', 'CALLIGRAPHY', 'SPRAY', 'ERASER']
+                        for i, tool in enumerate(tools_list):
+                            bx = h_start_x + i * x_step
+                            hover_targets.append({'name': tool, 'box': (bx, h_y, bx + x_step - 5, h_y + 60), 'text': tool[:3]})
+                        
+                        # Project Board targets (Left Side)
+                        pb_w, pb_h = 280, 360
+                        px1 = 30
+                        py1 = int(h/2) - int(pb_h/2)
+                        
+                        hover_targets.append({'name': 'ACTION_NEW_LAYER', 'box': (px1+20, py1+55, px1+pb_w-20, py1+90)})
+                        
+                        ly_y = py1 + 110
+                        for li in range(len(layers)):
+                            hover_targets.append({'name': f'LAYER_SELECT_{li}', 'box': (px1+15, ly_y-8, px1+pb_w-40, ly_y+25)})
+                            hover_targets.append({'name': f'LAYER_VIS_{li}', 'box': (px1+15, ly_y+3, px1+45, ly_y+13)})
+                            ly_y += 40
+                            
+                        # Action Buttons in Project Board
+                        btn_y = py1 + 310
+                        cx_clear = px1 + 20
+                        hover_targets.append({'name': 'ACTION_CLEAR', 'box': (cx_clear, btn_y, cx_clear + 70, btn_y + 35)})
+                        cx_undo = px1 + 105
+                        hover_targets.append({'name': 'ACTION_UNDO', 'box': (cx_undo, btn_y, cx_undo + 70, btn_y + 35)})
+                        cx_save = px1 + 190
+                        hover_targets.append({'name': 'ACTION_SAVE', 'box': (cx_save, btn_y, cx_save + 70, btn_y + 35)})
+                        
+                        hovering_ui = False
+                        current_target = None
+                        
+                        for t in hover_targets:
+                            x1, y1, x2, y2 = t['box']
+                            if cx >= x1 and cx <= x2 and cy >= y1 and cy <= y2:
+                                current_target = t['name']
+                                hovering_ui = True
+                                break
+                                
+                        if current_target == ui_hover_target and current_target is not None:
+                            ui_hover_frames += 1
+                            if ui_hover_frames >= 20: # 1 second click
+                                if current_target.startswith('COLOR_'):
+                                    parts = current_target.split('_')
+                                    current_draw_color = color_palette[int(parts[1])][int(parts[2])]
+                                elif current_target == 'ACTION_CLEAR':
+                                    if canvas is not None:
+                                        layer_history[active_layer_idx].append(canvas.copy())
+                                        canvas.fill(0)
+                                elif current_target == 'ACTION_UNDO':
+                                    hl = layer_history[active_layer_idx]
+                                    if len(hl) > 0 and canvas is not None:
+                                        np.copyto(canvas, hl.pop())
+                                elif current_target == 'ACTION_SAVE':
+                                    export_img = np.full_like(image, 255)
+                                    for ld in layers:
+                                        if ld['visible']:
+                                            lc = ld['canvas']
+                                            gray = cv2.cvtColor(lc, cv2.COLOR_BGR2GRAY)
+                                            _, lmask = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
+                                            export_img[lmask == 255] = lc[lmask == 255]
+                                    cv2.imwrite('drawing_export.png', export_img)
+                                elif current_target == 'ACTION_NEW_LAYER':
+                                    if len(layers) < MAX_LAYERS:
+                                        layers.append({'name': f'Layer {len(layers)+1}', 'canvas': np.zeros_like(image), 'visible': True})
+                                        active_layer_idx = len(layers) - 1
+                                elif current_target.startswith('LAYER_SELECT_'):
+                                    li = int(current_target.split('_')[-1])
+                                    if li < len(layers): active_layer_idx = li
+                                elif current_target.startswith('LAYER_VIS_'):
+                                    li = int(current_target.split('_')[-1])
+                                    if li < len(layers): layers[li]['visible'] = not layers[li]['visible']
+                                else:
+                                    current_draw_tool = current_target
+                                ui_hover_frames = 0
+                        else:
+                            ui_hover_target = current_target
+                            ui_hover_frames = 1 if current_target else 0
+                            
+                        if 'I' in hand_fingers and 'M' not in hand_fingers and 'R' not in hand_fingers and 'P' not in hand_fingers and not hovering_ui:
+                            if not was_drawing and canvas is not None:
+                                hl = layer_history[active_layer_idx]
+                                hl.append(canvas.copy())
+                                if len(hl) > 10: hl.pop(0)
+                                current_stroke = []
+                                stroke_hold_frames = 0
+                            was_drawing = True
+                            
+                            wrist_lm = hand_landmarks[0]
+                            mcp_lm = hand_landmarks[9]
+                            hand_size = math.hypot(wrist_lm.x - mcp_lm.x, wrist_lm.y - mcp_lm.y)
+                            depth_mult = max(0.3, min(2.5, hand_size * 10))
+                            
+                            current_stroke.append((cx, cy))
+                            
                             if prev_draw_x != 0 and prev_draw_y != 0 and canvas is not None:
-                                cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), (255, 100, 255), 8, cv2.LINE_AA)
+                                if len(current_stroke) > 0:
+                                    dist_moved = math.hypot(cx - prev_draw_x, cy - prev_draw_y)
+                                    if dist_moved < 15.0: # Increased threshold for natural hand jitter
+                                        stroke_hold_frames += 1
+                                    else:
+                                        stroke_hold_frames = 0
+                                        
+                                if stroke_hold_frames >= 15 and len(current_stroke) > 15:
+                                    shape_data = recognize_shape(current_stroke)
+                                    if shape_data:
+                                        # Undo messy stroke
+                                        np.copyto(canvas, layer_history[active_layer_idx][-1])
+                                        # Draw perfect shape
+                                        draw_recognized_shape(canvas, shape_data, current_draw_color, int(4 * depth_mult), current_draw_tool)
+                                        current_stroke = [] # Prevent re-snapping
+                                        stroke_hold_frames = 0
+                            
+                            if prev_draw_x != 0 and prev_draw_y != 0 and canvas is not None and len(current_stroke) > 0:
+                                if current_draw_tool == 'PEN':
+                                    t = max(1, int(2 * depth_mult))
+                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), current_draw_color, t, cv2.LINE_AA)
+                                elif current_draw_tool == 'MARKER':
+                                    t = max(2, int(20 * depth_mult))
+                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), current_draw_color, t, cv2.LINE_AA)
+                                elif current_draw_tool == 'NEON':
+                                    t1 = max(4, int(16 * depth_mult))
+                                    t2 = max(2, int(8 * depth_mult))
+                                    t3 = max(1, int(2 * depth_mult))
+                                    halo_color = (max(0, current_draw_color[0]-50), max(0, current_draw_color[1]-50), max(0, current_draw_color[2]-50))
+                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), halo_color, t1, cv2.LINE_AA)
+                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), current_draw_color, t2, cv2.LINE_AA)
+                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), (255, 255, 255), t3, cv2.LINE_AA)
+                                elif current_draw_tool == 'CALLIGRAPHY':
+                                    offset = max(1, int(8 * depth_mult))
+                                    pts = np.array([
+                                        [prev_draw_x - offset, prev_draw_y + offset],
+                                        [prev_draw_x + offset, prev_draw_y - offset],
+                                        [cx + offset, cy - offset],
+                                        [cx - offset, cy + offset]
+                                    ], np.int32)
+                                    cv2.fillPoly(canvas, [pts], current_draw_color, cv2.LINE_AA)
+                                elif current_draw_tool == 'SPRAY':
+                                    dist = math.hypot(cx - prev_draw_x, cy - prev_draw_y)
+                                    steps = max(1, int(dist / 3))
+                                    sr = int(18 * depth_mult)
+                                    for i in range(steps):
+                                        t_step = i / steps
+                                        px = int(prev_draw_x + t_step * (cx - prev_draw_x))
+                                        py = int(prev_draw_y + t_step * (cy - prev_draw_y))
+                                        for _ in range(int(4 * depth_mult) + 1):
+                                            rx = px + random.randint(-sr, sr)
+                                            ry = py + random.randint(-sr, sr)
+                                            cv2.circle(canvas, (rx, ry), random.randint(1, max(2, int(2*depth_mult))), current_draw_color, -1)
+                                elif current_draw_tool == 'ERASER':
+                                    t = max(5, int(40 * depth_mult))
+                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), (0, 0, 0), t, cv2.LINE_AA)
                             prev_draw_x, prev_draw_y = cx, cy
-                        elif len(hand_fingers) == 2 and 'I' in hand_fingers and 'M' in hand_fingers:
+                        elif 'I' in hand_fingers and 'M' in hand_fingers and 'R' not in hand_fingers and 'P' not in hand_fingers:
                             prev_draw_x, prev_draw_y = 0, 0
+                            was_drawing = False
+                            current_stroke = []
+                            stroke_hold_frames = 0
                         else:
                             prev_draw_x, prev_draw_y = 0, 0
+                            was_drawing = False
+                            current_stroke = []
+                            stroke_hold_frames = 0
 
-            # Clean up EMA for lost hands
             if not results or not results.hand_landmarks:
                 hand_ema.clear()
                 if app_mode == 'DRAW_MODE':
@@ -500,45 +725,82 @@ def main():
             p_time = c_time
             
             fps_history.append(current_fps)
-            if len(fps_history) > 15:
-                fps_history.pop(0)
+            if len(fps_history) > 15: fps_history.pop(0)
             fps = sum(fps_history) / len(fps_history)
             
-            # --- RENDERING BASED ON MODE ---
+            # Animation system
+            if app_mode != prev_rendered_mode:
+                mode_enter_frame = 0
+                prev_rendered_mode = app_mode
+            mode_enter_frame = min(mode_enter_frame + 1, 100)
+            
             if app_mode == 'MAIN_MENU':
-                cx, cy = int(w/2), int(h/2)
-                draw_glass_panel(image, (cx - 300, cy - 200), (cx + 300, cy + 200), radius=25, alpha=0.7)
-                cv2.putText(image, "MAIN MENU", (cx - 110, cy - 120), cv2.FONT_HERSHEY_DUPLEX, 1.2, (255, 255, 255), 2, cv2.LINE_AA)
+                at = ease_out_cubic(min(mode_enter_frame / 20.0, 1.0))
+                mx, my = int(w/2), int(h/2)
                 
-                # Option 1
-                color_1 = (255, 100, 255) if menu_selection_choice == 'NEWS_MENU' else (150, 150, 150)
-                cv2.putText(image, "1 Finger: News Mode", (cx - 200, cy), cv2.FONT_HERSHEY_DUPLEX, 0.8, color_1, 2 if menu_selection_choice == 'NEWS_MENU' else 1, cv2.LINE_AA)
+                # Animated background dim
+                ov = image.copy()
+                cv2.rectangle(ov, (0, 0), (w, h), (10, 10, 15), cv2.FILLED)
+                cv2.addWeighted(ov, 0.3 * at, image, 1.0 - 0.3 * at, 0, image)
                 
-                # Option 2
-                color_2 = (255, 100, 255) if menu_selection_choice == 'DRAW_MODE' else (150, 150, 150)
-                cv2.putText(image, "2 Fingers: Draw Mode", (cx - 200, cy + 60), cv2.FONT_HERSHEY_DUPLEX, 0.8, color_2, 2 if menu_selection_choice == 'DRAW_MODE' else 1, cv2.LINE_AA)
+                # Title slides down from above
+                ty = my - 155 + int((1 - at) * -70)
+                tc = (int(255*at),)*3
+                cv2.putText(image, "PunchToRead", (mx - 155, ty), cv2.FONT_HERSHEY_DUPLEX, 1.3, tc, 2, cv2.LINE_AA)
+                sc = (int(120*at),)*3
+                cv2.putText(image, "Choose your experience", (mx - 145, ty + 40), cv2.FONT_HERSHEY_DUPLEX, 0.55, sc, 1, cv2.LINE_AA)
                 
-                # Progress bar for selection
+                # Mode selection cards
+                cw, ch = 220, 170
+                gap = 40
+                
+                # News Card (rises from below)
+                c1_slide = int((1 - at) * 180)
+                c1x = mx - cw - gap//2
+                c1y = my - 20 + c1_slide
+                news_sel = menu_selection_choice == 'NEWS_MENU'
+                nb = (200, 120, 255) if news_sel else (70, 70, 80)
+                draw_glass_panel(image, (c1x, c1y), (c1x+cw, c1y+ch), radius=22, alpha=0.7, bg_color=(25,25,35), border_color=nb)
+                nc = (int(255*at),)*3
+                cv2.putText(image, "News Mode", (c1x+55, c1y+80), cv2.FONT_HERSHEY_DUPLEX, 0.85, nc, 1+int(news_sel), cv2.LINE_AA)
+                nc2 = (int(130*at),)*3
+                cv2.putText(image, "Point 1 finger", (c1x+50, c1y+115), cv2.FONT_HERSHEY_DUPLEX, 0.5, nc2, 1, cv2.LINE_AA)
+                
+                # Draw Card (rises with stagger)
+                c2_at = ease_out_cubic(min(max(0, mode_enter_frame - 4) / 20.0, 1.0))
+                c2_slide = int((1 - c2_at) * 180)
+                c2x = mx + gap//2
+                c2y = my - 20 + c2_slide
+                draw_sel = menu_selection_choice == 'DRAW_MODE'
+                db = (200, 120, 255) if draw_sel else (70, 70, 80)
+                draw_glass_panel(image, (c2x, c2y), (c2x+cw, c2y+ch), radius=22, alpha=0.7, bg_color=(25,25,35), border_color=db)
+                dc = (int(255*c2_at),)*3
+                cv2.putText(image, "Draw Mode", (c2x+55, c2y+80), cv2.FONT_HERSHEY_DUPLEX, 0.85, dc, 1+int(draw_sel), cv2.LINE_AA)
+                dc2 = (int(130*c2_at),)*3
+                cv2.putText(image, "Point 2 fingers", (c2x+45, c2y+115), cv2.FONT_HERSHEY_DUPLEX, 0.5, dc2, 1, cv2.LINE_AA)
+                
+                # Selection highlight fade-in (replaces flat bar/ring)
                 if menu_selection_frames > 0:
-                    bar_w = int((menu_selection_frames / 15.0) * 400)
-                    cv2.rectangle(image, (cx - 200, cy + 130), (cx - 200 + bar_w, cy + 135), (255, 255, 255), cv2.FILLED)
+                    prog = menu_selection_frames / 15.0
+                    fill_c = (220, 140, 255)
+                    ov_fill = image.copy()
+                    if news_sel:
+                        draw_rounded_rect(ov_fill, (c1x, c1y), (c1x+cw, c1y+ch), fill_c, cv2.FILLED, radius=22)
+                    else:
+                        draw_rounded_rect(ov_fill, (c2x, c2y), (c2x+cw, c2y+ch), fill_c, cv2.FILLED, radius=22)
+                    cv2.addWeighted(ov_fill, 0.4 * prog, image, 1.0 - 0.4 * prog, 0, image)
 
             elif app_mode == 'NEWS_MENU':
                 cv2.putText(image, f'FPS: {int(fps)}', (w - 120, 40), cv2.FONT_HERSHEY_DUPLEX, 0.6, (150, 150, 150), 1, cv2.LINE_AA)
-                
-                # Exit instruction
                 cv2.putText(image, "Pinch to exit to Main Menu", (w - 300, h - 30), cv2.FONT_HERSHEY_DUPLEX, 0.6, (120, 120, 120), 1, cv2.LINE_AA)
                             
-                # --- Right Hand Panel ---
                 if active_news_right:
                     box_width_R = 300
                     box_height_R = max(70, 40 * len(active_news_right) + 40)
                     x1, y1 = w - box_width_R - 30, 80
                     x2, y2 = w - 30, 80 + box_height_R
-                    
                     draw_glass_panel(image, (x1, y1), (x2, y2), radius=20, alpha=0.7)
                     cv2.putText(image, f'Right Hand', (x1 + 20, y1 + 30), cv2.FONT_HERSHEY_DUPLEX, 0.55, (160, 160, 160), 1, cv2.LINE_AA)
-                    
                     y_pos = y1 + 65
                     for news in active_news_right:
                         is_active = (selected_topic_global == news)
@@ -547,16 +809,13 @@ def main():
                         cv2.putText(image, news, (x1 + 20, y_pos), cv2.FONT_HERSHEY_DUPLEX, 0.55, color, thickness, cv2.LINE_AA)
                         y_pos += 35
 
-                # --- Left Hand Panel ---
                 if active_news_left:
                     box_width_L = 300
                     box_height_L = max(70, 40 * len(active_news_left) + 40)
                     x1, y1 = 30, 80
                     x2, y2 = 30 + box_width_L, 80 + box_height_L
-                    
                     draw_glass_panel(image, (x1, y1), (x2, y2), radius=20, alpha=0.7)
                     cv2.putText(image, f'Left Hand', (x1 + 20, y1 + 30), cv2.FONT_HERSHEY_DUPLEX, 0.55, (160, 160, 160), 1, cv2.LINE_AA)
-                    
                     y_pos = y1 + 65
                     for news in active_news_left:
                         is_active = (selected_topic_global == news)
@@ -565,12 +824,10 @@ def main():
                         cv2.putText(image, news, (x1 + 20, y_pos), cv2.FONT_HERSHEY_DUPLEX, 0.55, color, thickness, cv2.LINE_AA)
                         y_pos += 35
 
-                # --- Floating Action Pill ---
                 pill_w = 400
                 pill_h = 50
                 px1, py1 = int(w/2) - int(pill_w/2), h - 80
                 px2, py2 = int(w/2) + int(pill_w/2), h - 30
-                
                 if selected_topic_global:
                     draw_glass_panel(image, (px1, py1), (px2, py2), radius=25, alpha=0.85, bg_color=(35, 35, 45), border_color=(180, 180, 180))
                     text = selected_topic_global
@@ -583,14 +840,11 @@ def main():
                     cv2.putText(image, text, (int(w/2) - int(tw/2), py1 + 34), cv2.FONT_HERSHEY_DUPLEX, 0.6, (150, 150, 150), 1, cv2.LINE_AA)
                     
             elif app_mode == 'CONTENT_MODE':
-                # Dim the background for deep focus (Dark Mode look)
                 overlay = image.copy()
                 cv2.rectangle(overlay, (0, 0), (w, h), (10, 10, 15), cv2.FILLED)
                 cv2.addWeighted(overlay, 0.85, image, 0.15, 0, image)
                 
-                # Central frosted glass modal
                 box_w, box_h = 1000, 520
-                
                 offset_x = 0
                 if transition_frames > 0:
                     t = transition_frames / 15.0
@@ -598,20 +852,14 @@ def main():
                     transition_frames -= 1
                     
                 parallax_offset = int((current_wrist_x - 0.5) * 80)
-                
                 cx, cy = int(w/2) + offset_x + parallax_offset, int(h/2)
                 x1, y1 = cx - int(box_w/2), cy - int(box_h/2)
                 x2, y2 = cx + int(box_w/2), cy + int(box_h/2)
                 
                 draw_glass_panel(image, (x1, y1), (x2, y2), radius=25, alpha=0.8, bg_color=(25, 25, 30), border_color=(60, 60, 70))
-                
-                # Clean, minimal Title
                 cv2.putText(image, selected_topic_global.upper(), (x1 + 40, y1 + 70), cv2.FONT_HERSHEY_DUPLEX, 1.2, (240, 240, 240), 2, cv2.LINE_AA)
-                            
-                # Subtle Separator
                 cv2.line(image, (x1 + 40, y1 + 100), (x2 - 40, y1 + 100), (80, 80, 80), 1, cv2.LINE_AA)
                 
-                # --- VISUALIZATION / IMAGES ---
                 vis_w, vis_h = 320, 320
                 vis_x = x2 - vis_w - 40
                 vis_y = y1 + 140
@@ -620,73 +868,237 @@ def main():
                     img_to_show = cv2.resize(current_display_image, (vis_w, vis_h))
                     mask = np.zeros((vis_h, vis_w), dtype=np.uint8)
                     draw_rounded_rect(mask, (0, 0), (vis_w, vis_h), 255, thickness=cv2.FILLED, radius=20)
-                    
                     valid_x1, valid_y1 = max(0, vis_x), max(0, vis_y)
                     valid_x2, valid_y2 = min(w, vis_x + vis_w), min(h, vis_y + vis_h)
-                    
                     if valid_x2 > valid_x1 and valid_y2 > valid_y1:
                         mx1, mx2 = valid_x1 - vis_x, valid_x2 - vis_x
                         my1, my2 = valid_y1 - vis_y, valid_y2 - vis_y
-                        
                         roi = image[valid_y1:valid_y2, valid_x1:valid_x2]
                         valid_mask = mask[my1:my2, mx1:mx2]
                         valid_img = img_to_show[my1:my2, mx1:mx2]
-                        
                         idx = (valid_mask == 255)
                         roi[idx] = valid_img[idx]
-                    
                     draw_rounded_rect(image, (vis_x, vis_y), (vis_x+vis_w, vis_y+vis_h), (80, 80, 80), thickness=1, radius=20)
                 else:
                     draw_glass_panel(image, (vis_x, vis_y), (vis_x + vis_w, vis_y + vis_h), radius=20, alpha=0.4, bg_color=(40, 40, 45))
                     cv2.putText(image, "Visualization", (vis_x + 85, vis_y + 160), cv2.FONT_HERSHEY_DUPLEX, 0.7, (150,150,150), 1, cv2.LINE_AA)
 
-                # Wrapped Content Text
                 content = mock_content.get(selected_topic_global, "Content not found for this topic.")
                 text_max_width = box_w - vis_w - 100
                 put_wrapped_text(image, content, (x1 + 40, y1 + 160), cv2.FONT_HERSHEY_DUPLEX, 0.65, (200, 200, 200), 1, text_max_width)
                                  
-                # Instructions to exit
                 exit_txt = "Pinch to close | Swipe L/R for Next/Prev"
                 (tw, th), _ = cv2.getTextSize(exit_txt, cv2.FONT_HERSHEY_DUPLEX, 0.6, 1)
                 cv2.putText(image, exit_txt, (cx - int(tw/2), y2 - 25), cv2.FONT_HERSHEY_DUPLEX, 0.6, (120, 120, 120), 1, cv2.LINE_AA)
                 
+                # Swipe direction arrow
+                if swipe_arrow_frames > 0:
+                    sa = swipe_arrow_frames / 15.0
+                    ac = (int(200*sa), int(200*sa), int(255*sa))
+                    acy = int(h/2)
+                    if swipe_arrow_dir == 1:
+                        acx = w - 60
+                        pts = np.array([[acx, acy-25], [acx+30, acy], [acx, acy+25]], np.int32)
+                    else:
+                        acx = 60
+                        pts = np.array([[acx, acy-25], [acx-30, acy], [acx, acy+25]], np.int32)
+                    cv2.fillPoly(image, [pts], ac, cv2.LINE_AA)
+                    swipe_arrow_frames -= 1
+                
             elif app_mode == 'DRAW_MODE':
-                # Dim background
+                # Panel entrance animations (staggered)
+                anim_bg = ease_out_cubic(min(mode_enter_frame / 12.0, 1.0))
+                anim_left = ease_out_cubic(min(mode_enter_frame / 18.0, 1.0))
+                anim_right = ease_out_cubic(min(max(0, mode_enter_frame - 4) / 18.0, 1.0))
+                anim_bottom = ease_out_cubic(min(max(0, mode_enter_frame - 7) / 18.0, 1.0))
+                anim_top = ease_out_cubic(min(max(0, mode_enter_frame - 2) / 18.0, 1.0))
+                
                 overlay = image.copy()
                 cv2.rectangle(overlay, (0, 0), (w, h), (15, 15, 20), cv2.FILLED)
-                cv2.addWeighted(overlay, 0.6, image, 0.4, 0, image)
+                cv2.addWeighted(overlay, 0.6 * anim_bg, image, 1.0 - 0.6 * anim_bg, 0, image)
                 
-                # Overlay Canvas
-                if canvas is not None:
-                    gray_canvas = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY)
-                    _, mask = cv2.threshold(gray_canvas, 1, 255, cv2.THRESH_BINARY)
-                    image[mask == 255] = canvas[mask == 255]
+                # Composite all visible layers
+                for layer_data in layers:
+                    if layer_data['visible']:
+                        lc = layer_data['canvas']
+                        gray_lc = cv2.cvtColor(lc, cv2.COLOR_BGR2GRAY)
+                        _, lmask = cv2.threshold(gray_lc, 1, 255, cv2.THRESH_BINARY)
+                        image[lmask == 255] = lc[lmask == 255]
+                    
+                # 1. Left Project Board (slides in from left)
+                pb_w, pb_h = 280, 360
+                px1 = int(-pb_w + anim_left * (30 + pb_w))
+                py1 = int(h/2) - int(pb_h/2)
+                px2, py2 = px1 + pb_w, py1 + pb_h
+                draw_glass_panel(image, (px1, py1), (px2, py2), radius=20, alpha=0.7, bg_color=(40, 40, 45))
+                cv2.putText(image, "Layers", (px1 + 105, py1 + 35), cv2.FONT_HERSHEY_DUPLEX, 0.7, (240, 240, 240), 1, cv2.LINE_AA)
                 
-                # Draw cursor if index is tracking
+                # New Layer button
+                if len(layers) < MAX_LAYERS:
+                    nl_y = py1 + 55
+                    draw_rounded_rect(image, (px1+20, nl_y), (px2-20, nl_y+35), (50, 50, 55), radius=8)
+                    cv2.putText(image, "+ New Layer", (px1+80, nl_y+24), cv2.FONT_HERSHEY_DUPLEX, 0.5, (180, 180, 180), 1, cv2.LINE_AA)
+                    if ui_hover_target == 'ACTION_NEW_LAYER' and ui_hover_frames > 0:
+                        bar_w = int((ui_hover_frames / 20.0) * (pb_w - 40))
+                        cv2.rectangle(image, (px1+20, nl_y+30), (px1+20+bar_w, nl_y+35), (140, 200, 255), cv2.FILLED)
+                
+                # Layer list
+                ly_y = py1 + 110
+                for li, ld in enumerate(layers):
+                    is_active = (li == active_layer_idx)
+                    is_visible = ld['visible']
+                    
+                    if is_active:
+                        draw_rounded_rect(image, (px1+15, ly_y-8), (px2-15, ly_y+25), (60, 50, 80), radius=6)
+                    
+                    # Eye icon (visibility toggle)
+                    eye_c = (180, 220, 255) if is_visible else (80, 80, 80)
+                    cv2.ellipse(image, (px1+30, ly_y+8), (8, 5), 0, 0, 360, eye_c, 1, cv2.LINE_AA)
+                    if is_visible:
+                        cv2.circle(image, (px1+30, ly_y+8), 3, eye_c, cv2.FILLED, cv2.LINE_AA)
+                    
+                    # Layer name
+                    lnc = (255, 255, 255) if is_active else (150, 150, 150)
+                    cv2.putText(image, ld['name'], (px1+50, ly_y+18), cv2.FONT_HERSHEY_DUPLEX, 0.5, lnc, 1, cv2.LINE_AA)
+                    
+                    # Hover progress ring
+                    t_name = f'LAYER_SELECT_{li}'
+                    vis_name = f'LAYER_VIS_{li}'
+                    if ui_hover_target == t_name and ui_hover_frames > 0:
+                        angle = int((ui_hover_frames / 20.0) * 360)
+                        cv2.ellipse(image, (px2-30, ly_y+8), (12, 12), 0, 0, angle, (200, 200, 200), 2, cv2.LINE_AA)
+                    if ui_hover_target == vis_name and ui_hover_frames > 0:
+                        angle = int((ui_hover_frames / 20.0) * 360)
+                        cv2.ellipse(image, (px1+30, ly_y+8), (12, 12), 0, 0, angle, (200, 200, 200), 2, cv2.LINE_AA)
+                    
+                    ly_y += 40
+                
+                # Action Buttons inside Project Board
+                btn_y = py1 + 310
+                
+                # CLR Button
+                cx_clear = px1 + 20
+                draw_rounded_rect(image, (cx_clear, btn_y), (cx_clear + 70, btn_y + 35), (50, 50, 60), radius=8)
+                cv2.putText(image, "CLR", (cx_clear + 18, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_CLEAR' and ui_hover_frames > 0:
+                    prog = ui_hover_frames / 20.0
+                    cv2.rectangle(image, (cx_clear, btn_y+31), (cx_clear + int(70*prog), btn_y + 35), (255, 100, 100), cv2.FILLED)
+                    
+                # UNDO Button
+                cx_undo = px1 + 105
+                draw_rounded_rect(image, (cx_undo, btn_y), (cx_undo + 70, btn_y + 35), (50, 50, 60), radius=8)
+                cv2.putText(image, "UNDO", (cx_undo + 12, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_UNDO' and ui_hover_frames > 0:
+                    prog = ui_hover_frames / 20.0
+                    cv2.rectangle(image, (cx_undo, btn_y+31), (cx_undo + int(70*prog), btn_y + 35), (100, 200, 255), cv2.FILLED)
+                    
+                # SAVE Button
+                cx_save = px1 + 190
+                draw_rounded_rect(image, (cx_save, btn_y), (cx_save + 70, btn_y + 35), (50, 60, 50), radius=8)
+                cv2.putText(image, "SAVE", (cx_save + 15, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, (150, 255, 150), 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_SAVE' and ui_hover_frames > 0:
+                    prog = ui_hover_frames / 20.0
+                    cv2.rectangle(image, (cx_save, btn_y+31), (cx_save + int(70*prog), btn_y + 35), (100, 255, 100), cv2.FILLED)
+                
+                # 2. Right Color Panel (slides in from right)
+                cp_w, cp_h = 280, 420
+                cp_x1 = int(w - 310 * anim_right)
+                cp_y1 = int(h/2) - int(cp_h/2)
+                cp_x2, cp_y2 = cp_x1 + cp_w, cp_y1 + cp_h
+                draw_glass_panel(image, (cp_x1, cp_y1), (cp_x2, cp_y2), radius=20, alpha=0.8, bg_color=(35, 35, 40))
+                cv2.putText(image, "Colors", (cp_x1 + 110, cp_y1 + 25), cv2.FONT_HERSHEY_DUPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+                
+                gx, gy = cp_x1 + 60, cp_y1 + 60
+                for c in range(2):
+                    for r in range(7):
+                        cx_c = gx + c * 80
+                        cy_c = gy + r * 50
+                        c_val = color_palette[c][r]
+                        
+                        # Active color highlight
+                        if current_draw_color == c_val:
+                            cv2.circle(image, (cx_c, cy_c), 20, (255, 255, 255), 2, cv2.LINE_AA)
+                            
+                        # Color swatch
+                        cv2.circle(image, (cx_c, cy_c), 16, c_val, cv2.FILLED, cv2.LINE_AA)
+                        
+                        # Hover progress
+                        t_name = f'COLOR_{c}_{r}'
+                        if ui_hover_target == t_name and ui_hover_frames > 0:
+                            angle = int((ui_hover_frames / 20.0) * 360)
+                            cv2.ellipse(image, (cx_c, cy_c), (22, 22), -90, 0, angle, (255, 255, 255), 2, cv2.LINE_AA)
+                            
+                swatch_x = cp_x1 + 20
+                swatch_y = cp_y1 + 260
+                draw_rounded_rect(image, (swatch_x, swatch_y), (swatch_x + 40, swatch_y + 40), current_draw_color, radius=10)
+                cv2.putText(image, "Active", (swatch_x + 50, swatch_y + 25), cv2.FONT_HERSHEY_DUPLEX, 0.5, (150, 150, 150), 1, cv2.LINE_AA)
+
+                # 3. Horizontal Bottom Palette (slides up from bottom)
+                h_start_x = int(w/2) - 250
+                h_y = int(h + 70 - 160 * anim_bottom)
+                draw_glass_panel(image, (h_start_x, h_y), (h_start_x + 500, h_y + 70), radius=35, alpha=0.8, bg_color=(35, 35, 40))
+                
+                x_step = 500 / 6
+                h_targets = ['PEN', 'MARKER', 'NEON', 'CALLIG', 'SPRAY', 'ERASER']
+                for i, tool in enumerate(h_targets):
+                    slot_x = h_start_x + i * x_step + x_step/2
+                    slot_y = h_y + 35
+                    
+                    full_tool_name = tool
+                    if tool == 'CALLIG': full_tool_name = 'CALLIGRAPHY'
+                    
+                    color = (255, 255, 255) if current_draw_tool == full_tool_name else (150, 150, 150)
+                    ix, iy = int(slot_x), slot_y
+                    
+                    if tool == 'PEN':
+                        cv2.line(image, (ix-10, iy+10), (ix+10, iy-10), color, 2, cv2.LINE_AA)
+                    elif tool == 'MARKER':
+                        cv2.line(image, (ix-10, iy+10), (ix+10, iy-10), color, 8, cv2.LINE_AA)
+                    elif tool == 'NEON':
+                        cv2.line(image, (ix-10, iy+10), (ix+10, iy-10), color, 8, cv2.LINE_AA)
+                        core_c = (255,255,255) if current_draw_tool == full_tool_name else (100,100,100)
+                        cv2.line(image, (ix-10, iy+10), (ix+10, iy-10), core_c, 2, cv2.LINE_AA)
+                    elif tool == 'CALLIG':
+                        pts = np.array([
+                            [ix - 12, iy + 8],
+                            [ix + 4, iy - 8],
+                            [ix + 12, iy - 8],
+                            [ix - 4, iy + 8]
+                        ], np.int32)
+                        cv2.fillPoly(image, [pts], color, cv2.LINE_AA)
+                    elif tool == 'SPRAY':
+                        # Fixed deterministic spray pattern for UI
+                        offsets = [(-6,-2), (4,5), (-3,6), (5,-4), (0,0), (-5,-7), (6,-8), (8,1)]
+                        for dx, dy in offsets:
+                            cv2.circle(image, (ix+dx, iy+dy), 1, color, -1)
+                    elif tool == 'ERASER':
+                        cv2.rectangle(image, (ix-10, iy-10), (ix+10, iy+10), color, 2, cv2.LINE_AA)
+                        cv2.line(image, (ix-10, iy), (ix+10, iy), color, 2, cv2.LINE_AA)
+                    
+                    if ui_hover_target == full_tool_name and ui_hover_frames > 0:
+                        angle = int((ui_hover_frames / 20.0) * 360)
+                        cv2.ellipse(image, (int(slot_x), slot_y), (22, 22), 0, 0, angle, (200, 200, 200), 2, cv2.LINE_AA)
+
+                # Cursor rendering (pulsing glow)
                 if results and results.hand_landmarks:
+                    pulse = 0.5 + 0.5 * math.sin(time.time() * 5)
                     for h_idx, hlm in enumerate(results.hand_landmarks):
-                        # Use EMA smoothed landmarks to map to screen for cursor
                         h_label = results.handedness[h_idx][0].category_name
                         if h_label in hand_ema:
                             idx_tip_coords = hand_ema[h_label][8]
                             cx, cy = int(idx_tip_coords[0] * w), int(idx_tip_coords[1] * h)
-                            cv2.circle(image, (cx, cy), 8, (255, 100, 255), cv2.FILLED, cv2.LINE_AA)
-                            cv2.circle(image, (cx, cy), 15, (255, 100, 255), 2, cv2.LINE_AA)
-                
-                # Instructions Pill
-                pill_w, pill_h = 700, 50
-                px1, py1 = int(w/2) - int(pill_w/2), h - 80
-                px2, py2 = px1 + pill_w, h - 30
-                draw_glass_panel(image, (px1, py1), (px2, py2), radius=25, alpha=0.7)
-                txt = "Index: Draw | Peace: Hover | Open Palm: Clear | Pinch: Exit"
-                (tw, th), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_DUPLEX, 0.6, 1)
-                cv2.putText(image, txt, (int(w/2) - int(tw/2), py1 + 32), cv2.FONT_HERSHEY_DUPLEX, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
-            
+                            
+                            c_color = current_draw_color if current_draw_tool != 'ERASER' else (255, 255, 255)
+                            glow_r = int(20 + pulse * 8)
+                            glow_c = tuple(max(0, c - 100) for c in c_color)
+                            cv2.circle(image, (cx, cy), glow_r, glow_c, 1, cv2.LINE_AA)
+                            cv2.circle(image, (cx, cy), int(10 + pulse * 3), c_color, 2, cv2.LINE_AA)
+                            cv2.circle(image, (cx, cy), 4, (255, 255, 255), cv2.FILLED, cv2.LINE_AA)
+
             cv2.imshow('Precise Finger Counter', image)
             
             key = cv2.waitKey(1) & 0xFF
-            if key == 27 or key == ord('q'):
-                break
+            if key == 27 or key == ord('q'): break
 
     cap.release()
     cv2.destroyAllWindows()
