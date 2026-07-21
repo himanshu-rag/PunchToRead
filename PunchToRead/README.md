@@ -58,4 +58,55 @@ We didn't just stop at drawing; we added a full suite of management tools nested
 
 ---
 
+## 🛠️ Installation & Requirements
+
+To run this futuristic dashboard, you don't need a supercomputer. A standard webcam and a moderately modern CPU are enough!
+
+### Requirements
+The project relies on standard Python computer vision and machine learning libraries. All dependencies are listed in the `requirements.txt` file:
+- **Python 3.8+**
+- **OpenCV** (`opencv-python`)
+- **MediaPipe** (`mediapipe`)
+- **NumPy** (`numpy`)
+
+### Setup Instructions
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/himanshu-rag/PunchToRead.git
+   cd PunchToRead
+   ```
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. **Run the magic:**
+   ```bash
+   python PunchToRead.py
+   ```
+
+---
+
+## 🕹️ How to Use (Controls)
+
+No mouse? No problem. Here is your gesture cheat sheet:
+
+### Main Menu
+- **Hold 1 Finger (Index):** Enter News Dashboard Mode
+- **Hold 2 Fingers (Peace Sign):** Enter Drawing Mode
+
+### News Dashboard Mode
+- **Hover-to-Select:** Point 1 finger at the camera to highlight a news category.
+- **Swipe:** Flick your hand left or right in the air to switch pages.
+- **Punch-to-Read:** Once you are hovering over a category, close your hand into a fist (0 fingers) to open the article.
+- **3D Pinch-to-Exit:** Bring your Thumb, Index, and Middle fingers together to close an article or exit a mode.
+
+### Drawing Mode
+- **Draw:** Hold 1 finger (Index) up and move your hand to paint on the canvas. Move closer to the camera for thicker lines!
+- **Smart Snap:** Draw a rough circle or rectangle and hold your finger perfectly still at the end of the line for 0.5 seconds to snap it into a perfect shape.
+- **Hover/Move:** Hold 2 fingers (Peace sign) to move your cursor without drawing anything.
+- **Clear Canvas Action:** Open your whole hand (all 5 fingers) to instantly wipe the current layer.
+- **Project Board (Left):** Hover your cursor over the left side of the screen to reveal the Layer panel. You can add layers, toggle visibility, and use the `UNDO`, `CLR`, and `SAVE` buttons.
+
+---
+
 PunchToRead is more than just a project; it's a completely reimagined way to interact with our digital world. Dive in, wave your hands, and experience the future. 🚀
