@@ -319,7 +319,8 @@ def main():
                     index_tip = hand_landmarks[8]
                     middle_tip = hand_landmarks[12]
                     
-                    if get_distance3d(thumb_tip, index_tip) < 0.07 and get_distance3d(thumb_tip, middle_tip) < 0.07 and get_distance3d(index_tip, middle_tip) < 0.07:
+                    # Make the 3-finger pinch more forgiving
+                    if get_distance3d(thumb_tip, index_tip) < 0.12 and get_distance3d(thumb_tip, middle_tip) < 0.12:
                         pinch_detected = True
                     
                     dist_tip_to_pinky_base = get_distance3d(thumb_tip, pinky_base)
