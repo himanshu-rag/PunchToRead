@@ -30,4 +30,12 @@ To exit the immersive reading article, users must deliberately hold up both hand
 - **3D Pinch-to-Exit**: Closing content or exiting modes is now done effortlessly via a natural 3-finger pinch gesture (Thumb, Index, Middle), utilizing 3D Euclidean distance calculations for extreme precision.
 - **Magnetic Parallax**: The frosted glass UI panels now subtlely track your wrist position, giving a magnetic, tactile parallax effect that brings the interface to life.
 
+### Recent Updates (Version 4.0: The Power Features Update)
+- **Smart Shapes (Hold-to-Snap)**: Draw rough shapes (circles, rectangles, triangles, lines) in the air and hold your finger completely still at the end of the stroke. The app's advanced Convex Hull vector-tracking will analyze your movement and instantly "snap" the stroke into a mathematically perfect shape!
+- **Dynamic 3D Depth Brush**: The camera tracks your hand's physical distance. Push your hand closer to the camera to draw incredibly bold, thick lines; pull back for ultra-thin precision details.
+- **Advanced Project Management**: 
+  - **Multi-Layer Support**: A dedicated left-side Project Board allows you to add up to 5 individual drawing layers, complete with visibility toggles.
+  - **Memory Undo System**: Hover over the `UNDO` button to instantly pop your last mistakes off the canvas without affecting other layers.
+  - **High-Res Export**: Hit `SAVE` to composite your visible layers and instantly write them to disk as a high-resolution PNG image.
+
 PunchToRead is a robust, dynamic, and incredibly satisfying dive into the future of human-computer interaction.
