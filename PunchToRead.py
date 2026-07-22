@@ -535,7 +535,14 @@ def main():
                                     cv2.line(canvas, pt1, pt2, color, max(2, thickness), cv2.LINE_AA)
                         
                         canvas = layers[active_layer_idx]['canvas'] if layers else None
-                        cx, cy = int(index_tip.x * w), int(index_tip.y * h)
+                        if required_draw_fingers == 5:
+                            pip = hand_landmarks[6]
+                            dx = index_tip.x - pip.x
+                            dy = index_tip.y - pip.y
+                            cx, cy = int((index_tip.x + dx * 1.5) * w), int((index_tip.y + dy * 1.5) * h)
+                            cv2.circle(image, (cx, cy), 3, (0, 0, 255), -1) # Red dot for pen tip
+                        else:
+                            cx, cy = int(index_tip.x * w), int(index_tip.y * h)
                         
                         hover_targets = []
                         # Color Panel Targets (Right Side)
@@ -621,9 +628,9 @@ def main():
                                             export_img[lmask == 255] = lc[lmask == 255]
                                     cv2.imwrite('drawing_export.png', export_img)
                                 elif current_target == 'ACTION_FINGERS_MINUS':
-                                    required_draw_fingers = required_draw_fingers - 1 if required_draw_fingers > 1 else 4
+                                    required_draw_fingers = required_draw_fingers - 1 if required_draw_fingers > 1 else 5
                                 elif current_target == 'ACTION_FINGERS_PLUS':
-                                    required_draw_fingers = (required_draw_fingers % 4) + 1
+                                    required_draw_fingers = (required_draw_fingers % 5) + 1
                                 elif current_target == 'ACTION_NEW_LAYER':
                                     if len(layers) < MAX_LAYERS:
                                         layers.append({'name': f'Layer {len(layers)+1}', 'canvas': np.zeros_like(image), 'visible': True})
@@ -656,6 +663,9 @@ def main():
                             elif required_draw_fingers == 4:
                                 if 'I' in hand_fingers and 'M' in hand_fingers and 'R' in hand_fingers and 'P' in hand_fingers and len(hand_fingers) == 4: is_drawing = True
                                 elif 'I' in hand_fingers and len(hand_fingers) <= 2: is_hovering = True
+                            elif required_draw_fingers == 5:
+                                if 'M' not in hand_fingers and len(hand_fingers) < 4: is_drawing = True
+                                elif 'M' in hand_fingers: is_hovering = True
 
                         if is_drawing:
                             if not was_drawing and canvas is not None:
@@ -677,7 +687,10 @@ def main():
                             if required_draw_fingers >= 4: active_tips.append(20) # Pinky
                             
                             for fi, tip_idx in enumerate(active_tips):
-                                fx, fy = int(hand_landmarks[tip_idx].x * w), int(hand_landmarks[tip_idx].y * h)
+                                if required_draw_fingers == 5:
+                                    fx, fy = cx, cy
+                                else:
+                                    fx, fy = int(hand_landmarks[tip_idx].x * w), int(hand_landmarks[tip_idx].y * h)
                                 current_strokes[fi].append((fx, fy))
                                 
                                 px, py = prev_draw_pos[fi]
@@ -1081,7 +1094,9 @@ def main():
                 
                 # FINGERS Label
                 draw_rounded_rect(image, (px1+70, btn_y), (px1+190, btn_y+35), (50, 50, 60), radius=8)
-                cv2.putText(image, f"{required_draw_fingers} FINGERS", (px1 + 85, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, (255, 200, 255), 1, cv2.LINE_AA)
+                lbl = "PEN MODE" if required_draw_fingers == 5 else f"{required_draw_fingers} FINGERS"
+                txt_x = px1 + 85 if required_draw_fingers != 5 else px1 + 75
+                cv2.putText(image, lbl, (txt_x, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, (255, 200, 255), 1, cv2.LINE_AA)
                 
                 # FINGERS + Button
                 draw_rounded_rect(image, (px1+195, btn_y), (px1+240, btn_y+35), (70, 50, 70), radius=8)
