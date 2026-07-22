@@ -335,7 +335,7 @@ def main():
                         tip = hand_landmarks[tip_ids[id]]
                         pip = hand_landmarks[tip_ids[id] - 2]
                         mcp = hand_landmarks[tip_ids[id] - 3]
-                        if get_distance3d(wrist, tip) > get_distance3d(wrist, pip) and get_distance3d(mcp, tip) > get_distance3d(mcp, pip):
+                        if get_distance3d(mcp, tip) > get_distance3d(mcp, pip):
                             active_fingers_texts.append(finger_names[id])
                             hand_fingers.append(finger_names[id])
                             
@@ -343,7 +343,7 @@ def main():
                         palm_detected = True
                             
                     if app_mode == 'MAIN_MENU':
-                        if len(hand_fingers) == 1 and 'I' in hand_fingers:
+                        if len(hand_fingers) == 1:
                             if menu_selection_choice == 'NEWS_MENU':
                                 menu_selection_frames += 1
                                 if menu_selection_frames >= 15:
@@ -352,7 +352,7 @@ def main():
                             else:
                                 menu_selection_choice = 'NEWS_MENU'
                                 menu_selection_frames = 1
-                        elif len(hand_fingers) == 2 and 'I' in hand_fingers and 'M' in hand_fingers:
+                        elif len(hand_fingers) == 2:
                             if menu_selection_choice == 'DRAW_MODE':
                                 menu_selection_frames += 1
                                 if menu_selection_frames >= 15:
