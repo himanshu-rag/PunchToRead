@@ -603,13 +603,26 @@ def main():
                         hovering_ui = False
                         current_target = None
                         
-                        for t in hover_targets:
-                            x1, y1, x2, y2 = t['box']
-                            if cx >= x1 and cx <= x2 and cy >= y1 and cy <= y2:
-                                current_target = t['name']
-                                hovering_ui = True
-                                break
-                                
+                        # First determine drawing state, THEN check UI overlap
+                        n = len(hand_fingers)
+                        is_drawing = False
+                        is_hovering = False
+                        if required_draw_fingers == 5:  # PEN mode
+                            if 'M' not in hand_fingers: is_drawing = True
+                            else: is_hovering = True
+                        else:
+                            if n == required_draw_fingers: is_drawing = True
+                            elif n > 0 and n != required_draw_fingers: is_hovering = True
+                        
+                        # Only check UI hover targets when NOT actively drawing
+                        if not is_drawing:
+                            for t in hover_targets:
+                                x1, y1, x2, y2 = t['box']
+                                if cx >= x1 and cx <= x2 and cy >= y1 and cy <= y2:
+                                    current_target = t['name']
+                                    hovering_ui = True
+                                    break
+                                    
                         if current_target == ui_hover_target and current_target is not None:
                             ui_hover_frames += 1
                             if ui_hover_frames >= 20: # 1 second click
@@ -661,16 +674,6 @@ def main():
                             ui_hover_target = current_target
                             ui_hover_frames = 1 if current_target else 0
                             
-                        is_drawing = False
-                        is_hovering = False
-                        n = len(hand_fingers)
-                        if not hovering_ui:
-                            if required_draw_fingers == 5:  # PEN mode
-                                if 'M' not in hand_fingers: is_drawing = True
-                                else: is_hovering = True
-                            else:
-                                if n == required_draw_fingers: is_drawing = True
-                                elif n > 0 and n != required_draw_fingers: is_hovering = True
 
                         if is_drawing:
                             if not was_drawing and canvas is not None:
