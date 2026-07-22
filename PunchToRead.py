@@ -163,7 +163,7 @@ def main():
             self.x = x; self.y = y; self.z = z
             
     hand_ema = {}
-    EMA_ALPHA = 0.4
+    EMA_ALPHA = 0.7
     
     hover_frames = 0
     punch_frames = 0
@@ -334,7 +334,8 @@ def main():
                     for id in range(1, 5):
                         tip = hand_landmarks[tip_ids[id]]
                         pip = hand_landmarks[tip_ids[id] - 2]
-                        if get_distance3d(wrist, tip) > get_distance3d(wrist, pip):
+                        mcp = hand_landmarks[tip_ids[id] - 3]
+                        if get_distance3d(wrist, tip) > get_distance3d(wrist, pip) and get_distance3d(mcp, tip) > get_distance3d(mcp, pip):
                             active_fingers_texts.append(finger_names[id])
                             hand_fingers.append(finger_names[id])
                             
