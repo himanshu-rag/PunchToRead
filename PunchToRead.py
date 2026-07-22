@@ -155,6 +155,7 @@ def main():
     mode_enter_frame = 0
     prev_rendered_mode = 'MAIN_MENU'
     mirror_mode = False
+    grid_mode = True
     glow_particles = []
     
     selected_topic_global = None
@@ -585,6 +586,7 @@ def main():
                         hover_targets.append({'name': 'ACTION_FINGERS_MINUS', 'box': (hud_x+8,  hud_y+30, hud_x+38,  hud_y+52)})
                         hover_targets.append({'name': 'ACTION_FINGERS_PLUS',  'box': (hud_x+142, hud_y+30, hud_x+172, hud_y+52)})
                         hover_targets.append({'name': 'ACTION_MIRROR',        'box': (hud_x+110, hud_y+4,  hud_x+178, hud_y+26)})
+                        hover_targets.append({'name': 'ACTION_GRID',          'box': (hud_x+44,  hud_y+30, hud_x+136, hud_y+52)})
 
                         # ── Bottom-right HUD (undo/clear/save) ──
                         br_x, br_y = w - 178, h - 78
@@ -631,6 +633,8 @@ def main():
                                         np.copyto(canvas, hl.pop())
                                 elif current_target == 'ACTION_MIRROR':
                                     mirror_mode = not mirror_mode
+                                elif current_target == 'ACTION_GRID':
+                                    grid_mode = not grid_mode
                                 elif current_target == 'ACTION_BACK':
                                     app_mode = 'MAIN_MENU'
                                     prev_draw_x, prev_draw_y = 0, 0
@@ -1027,9 +1031,23 @@ def main():
                         _, lmask = cv2.threshold(gray_lc, 1, 255, cv2.THRESH_BINARY)
                         image[lmask == 255] = lc[lmask == 255]
 
+                # ── Cyber Grid Background Overlay ──
+                if grid_mode:
+                    grid_step = 40
+                    grid_color = (40, 35, 55)
+                    # Draw subtle grid lines
+                    for x_g in range(0, w, grid_step):
+                        cv2.line(image, (x_g, 0), (x_g, h), grid_color, 1, cv2.LINE_AA)
+                    for y_g in range(0, h, grid_step):
+                        cv2.line(image, (0, y_g), (w, y_g), grid_color, 1, cv2.LINE_AA)
+                    # Draw intersection dots for high-tech HUD look
+                    for x_g in range(0, w, grid_step * 2):
+                        for y_g in range(0, h, grid_step * 2):
+                            cv2.circle(image, (x_g, y_g), 2, (90, 75, 120), -1, cv2.LINE_AA)
+
                 # ── Mirror guide ──
                 if mirror_mode:
-                    cv2.line(image, (w//2, 0), (w//2, h), (55, 44, 100), 1, cv2.LINE_AA)
+                    cv2.line(image, (w//2, 0), (w//2, h), (120, 90, 255), 1, cv2.LINE_AA)
 
                 # ─────────────────────────────────────────────────────────────
                 # TOP BAR  (single unified control strip)
@@ -1108,7 +1126,14 @@ def main():
                     prog = min(ui_hover_frames / 20.0, 1.0)
                     cv2.line(image, (hud_x+8, hud_y+51), (hud_x+8+int(30*prog), hud_y+51), (120, 90, 255), 2, cv2.LINE_AA)
 
-                draw_rounded_rect(image, (hud_x+44, hud_y+30), (hud_x+136, hud_y+52), (28, 28, 38), radius=4)
+                grid_btn_col = (42, 42, 58) if grid_mode else (28, 28, 38)
+                grid_txt_col = (140, 120, 220) if grid_mode else (80, 80, 100)
+                draw_rounded_rect(image, (hud_x+44, hud_y+30), (hud_x+136, hud_y+52), grid_btn_col, radius=4)
+                grid_lbl = "GRID: ON" if grid_mode else "GRID: OFF"
+                cv2.putText(image, grid_lbl, (hud_x+54, hud_y+46), cv2.FONT_HERSHEY_SIMPLEX, 0.38, grid_txt_col, 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_GRID' and ui_hover_frames > 0:
+                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    cv2.line(image, (hud_x+44, hud_y+51), (hud_x+44+int(92*prog), hud_y+51), (120, 90, 255), 2, cv2.LINE_AA)
 
                 draw_rounded_rect(image, (hud_x+142, hud_y+30), (hud_x+172, hud_y+52), (35, 35, 48), radius=4)
                 cv2.putText(image, "+", (hud_x+150, hud_y+46), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (120, 100, 200), 1, cv2.LINE_AA)
