@@ -335,7 +335,9 @@ def main():
                         tip = hand_landmarks[tip_ids[id]]
                         pip = hand_landmarks[tip_ids[id] - 2]
                         mcp = hand_landmarks[tip_ids[id] - 3]
-                        if get_distance3d(mcp, tip) > get_distance3d(mcp, pip):
+                        v1x, v1y, v1z = pip.x - mcp.x, pip.y - mcp.y, pip.z - mcp.z
+                        v2x, v2y, v2z = tip.x - pip.x, tip.y - pip.y, tip.z - pip.z
+                        if (v1x*v2x + v1y*v2y + v1z*v2z) > 0:
                             active_fingers_texts.append(finger_names[id])
                             hand_fingers.append(finger_names[id])
                             
