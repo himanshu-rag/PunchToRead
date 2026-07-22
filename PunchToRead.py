@@ -286,7 +286,7 @@ def main():
             active_fingers_texts = []
             active_news_right = []
             active_news_left = []
-            palm_detected = False
+            
             
             active_handedness = set()
             h, w, c = image.shape
@@ -339,8 +339,7 @@ def main():
                             active_fingers_texts.append(finger_names[id])
                             hand_fingers.append(finger_names[id])
                             
-                    if len(hand_fingers) == 5:
-                        palm_detected = True
+
                             
                     if app_mode == 'MAIN_MENU':
                         if len(hand_fingers) == 1:
@@ -368,9 +367,10 @@ def main():
                             menu_selection_frames = 0
                             
                     elif app_mode == 'NEWS_MENU':
-                        if palm_detected:
+                        hx, hy = int(hand_landmarks[8].x * w), int(hand_landmarks[8].y * h)
+                        if 20 < hx < 120 and 20 < hy < 60:
                             exit_frames += 1
-                            if exit_frames > 15:
+                            if exit_frames > 20:
                                 app_mode = 'MAIN_MENU'
                                 exit_frames = 0
                         else: exit_frames = 0
@@ -408,9 +408,10 @@ def main():
                         elif len(hand_fingers) > 0: punch_frames = 0
                             
                     elif app_mode == 'CONTENT_MODE':
-                        if palm_detected:
+                        hx, hy = int(hand_landmarks[8].x * w), int(hand_landmarks[8].y * h)
+                        if 20 < hx < 120 and 20 < hy < 60:
                             exit_frames += 1
-                            if exit_frames >= 15:
+                            if exit_frames > 20:
                                 app_mode = 'MAIN_MENU'
                                 selected_topic_global = None
                                 selected_topic_hand = None
@@ -454,15 +455,6 @@ def main():
                                     swipe_arrow_dir = -1
                                     
                     elif app_mode == 'DRAW_MODE':
-                        if palm_detected:
-                            exit_frames += 1
-                            if exit_frames > 15:
-                                app_mode = 'MAIN_MENU'
-                                exit_frames = 0
-                                prev_draw_x, prev_draw_y = 0, 0
-                                ui_hover_frames = 0
-                                ui_hover_target = None
-                        else: exit_frames = 0
                         
                         def recognize_shape(pts):
                             if len(pts) < 15: return None
@@ -591,6 +583,7 @@ def main():
                         hover_targets.append({'name': 'ACTION_UNDO', 'box': (cx_undo, btn_y, cx_undo + 70, btn_y + 35)})
                         cx_save = px1 + 190
                         hover_targets.append({'name': 'ACTION_SAVE', 'box': (cx_save, btn_y, cx_save + 70, btn_y + 35)})
+                        hover_targets.append({'name': 'ACTION_BACK', 'box': (20, 20, 120, 60)})
                         hover_targets.append({'name': 'ACTION_FINGERS_MINUS', 'box': (px1+20, btn_y+45, px1+65, btn_y+80)})
                         hover_targets.append({'name': 'ACTION_FINGERS_PLUS', 'box': (px1+195, btn_y+45, px1+240, btn_y+80)})
                         
@@ -618,6 +611,11 @@ def main():
                                     hl = layer_history[active_layer_idx]
                                     if len(hl) > 0 and canvas is not None:
                                         np.copyto(canvas, hl.pop())
+                                elif current_target == 'ACTION_BACK':
+                                    app_mode = 'MAIN_MENU'
+                                    prev_draw_x, prev_draw_y = 0, 0
+                                    ui_hover_frames = 0
+                                    ui_hover_target = None
                                 elif current_target == 'ACTION_SAVE':
                                     export_img = np.full_like(image, 255)
                                     for ld in layers:
@@ -842,7 +840,14 @@ def main():
 
             elif app_mode == 'NEWS_MENU':
                 cv2.putText(image, f'FPS: {int(fps)}', (w - 120, 40), cv2.FONT_HERSHEY_DUPLEX, 0.6, (150, 150, 150), 1, cv2.LINE_AA)
-                cv2.putText(image, "Pinch to exit to Main Menu", (w - 300, h - 30), cv2.FONT_HERSHEY_DUPLEX, 0.6, (120, 120, 120), 1, cv2.LINE_AA)
+                
+                # Draw Back Button
+                draw_rounded_rect(image, (20, 20), (120, 60), (40, 40, 50), radius=10)
+                cv2.putText(image, "< BACK", (35, 45), cv2.FONT_HERSHEY_DUPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+                if exit_frames > 0:
+                    prog = exit_frames / 20.0
+                    cv2.rectangle(image, (20, 55), (20 + int(100 * prog), 60), (100, 200, 255), cv2.FILLED)
+
                             
                 if active_news_right:
                     box_width_R = 300
@@ -902,6 +907,13 @@ def main():
             elif app_mode == 'CONTENT_MODE':
                 article_frame_count += 1
                 overlay = image.copy()
+                
+                # Draw Back Button
+                draw_rounded_rect(image, (20, 20), (120, 60), (40, 40, 50), radius=10)
+                cv2.putText(image, "< BACK", (35, 45), cv2.FONT_HERSHEY_DUPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+                if exit_frames > 0:
+                    prog = exit_frames / 20.0
+                    cv2.rectangle(image, (20, 55), (20 + int(100 * prog), 60), (100, 200, 255), cv2.FILLED)
                 cv2.rectangle(overlay, (0, 0), (w, h), (10, 10, 15), cv2.FILLED)
                 cv2.addWeighted(overlay, 0.85, image, 0.15, 0, image)
                 
