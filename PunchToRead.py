@@ -161,6 +161,42 @@ def main():
     selected_topic_global = None
     selected_topic_hand = None
     
+    
+class OneEuroFilter:
+    def __init__(self, min_cutoff=0.1, beta=0.007):
+        self.min_cutoff = min_cutoff
+        self.beta = beta
+        self.x_prev = None
+        self.dx_prev = 0.0
+        
+    def filter(self, x, dt=0.033):
+        if self.x_prev is None:
+            self.x_prev = x
+            return x
+        dx = (x - self.x_prev) / dt
+        edx = self.dx_prev + 0.1 * (dx - self.dx_prev)
+        self.dx_prev = edx
+        cutoff = self.min_cutoff + self.beta * abs(edx)
+        alpha = 1.0 / (1.0 + (1.0 / (2.0 * math.pi * cutoff * dt)))
+        x_hat = self.x_prev + alpha * (x - self.x_prev)
+        self.x_prev = x_hat
+        return x_hat
+
+euro_filters = {}
+
+def draw_smooth_curve(img, p1, p2, color, thickness):
+    # Quadratic Bezier Curve interpolation between previous & current point
+    mx, my = (p1[0] + p2[0]) // 2, (p1[1] + p2[1]) // 2
+    steps = max(2, int(math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 3))
+    prev_pt = p1
+    for t in range(1, steps + 1):
+        u = t / steps
+        # Quadratic interpolation
+        cx = int((1 - u)**2 * p1[0] + 2 * (1 - u) * u * mx + u**2 * p2[0])
+        cy = int((1 - u)**2 * p1[1] + 2 * (1 - u) * u * my + u**2 * p2[1])
+        cv2.line(img, prev_pt, (cx, cy), color, thickness, cv2.LINE_AA)
+        prev_pt = (cx, cy)
+
     class SmoothLM:
         def __init__(self, x, y, z):
             self.x = x; self.y = y; self.z = z
@@ -305,9 +341,21 @@ def main():
                     raw_lm_list = []
                     hand_landmarks = []
                     for i, lm in enumerate(raw_hand_landmarks):
-                        # Raw landmark for pixel-perfect drawing
-                        raw_lm_list.append(SmoothLM(lm.x, lm.y, lm.z))
-                        # EMA-smoothed landmark for stable gesture detection
+                        fid_x = f"{handedness_label}_{i}_x"
+                        fid_y = f"{handedness_label}_{i}_y"
+                        fid_z = f"{handedness_label}_{i}_z"
+                        if fid_x not in euro_filters:
+                            euro_filters[fid_x] = OneEuroFilter(min_cutoff=0.05, beta=0.01)
+                            euro_filters[fid_y] = OneEuroFilter(min_cutoff=0.05, beta=0.01)
+                            euro_filters[fid_z] = OneEuroFilter(min_cutoff=0.05, beta=0.01)
+                        
+                        fx = euro_filters[fid_x].filter(lm.x)
+                        fy = euro_filters[fid_y].filter(lm.y)
+                        fz = euro_filters[fid_z].filter(lm.z)
+                        
+                        raw_lm_list.append(SmoothLM(fx, fy, fz))
+                        
+                        # EMA for gestures
                         prev_x, prev_y, prev_z = hand_ema[handedness_label][i]
                         new_x = prev_x + EMA_ALPHA * (lm.x - prev_x)
                         new_y = prev_y + EMA_ALPHA * (lm.y - prev_y)
@@ -715,20 +763,34 @@ def main():
                                                     stroke_hold_frames = 0
                                                     
                                     if px != 0 and py != 0 and canvas is not None and len(current_strokes[fi]) > 0:
+                                        dist_step = math.hypot(fx - px, fy - py)
+                                        speed_factor = max(0.5, min(1.8, 15.0 / (dist_step + 1.0)))
+                                        
                                         if current_draw_tool == 'PEN':
-                                            t = max(1, int(2 * depth_mult))
-                                            cv2.line(canvas, (px, py), (fx, fy), current_draw_color, t, cv2.LINE_AA)
+                                            t = max(1, int(2 * depth_mult * speed_factor))
+                                            draw_smooth_curve(canvas, (px, py), (fx, fy), current_draw_color, t)
                                         elif current_draw_tool == 'MARKER':
-                                            t = max(2, int(20 * depth_mult))
-                                            cv2.line(canvas, (px, py), (fx, fy), current_draw_color, t, cv2.LINE_AA)
+                                            t = max(2, int(18 * depth_mult))
+                                            draw_smooth_curve(canvas, (px, py), (fx, fy), current_draw_color, t)
                                         elif current_draw_tool == 'NEON':
                                             t1 = max(4, int(16 * depth_mult))
                                             t2 = max(2, int(8 * depth_mult))
                                             t3 = max(1, int(2 * depth_mult))
                                             halo_color = (max(0, current_draw_color[0]-50), max(0, current_draw_color[1]-50), max(0, current_draw_color[2]-50))
-                                            cv2.line(canvas, (px, py), (fx, fy), halo_color, t1, cv2.LINE_AA)
-                                            cv2.line(canvas, (px, py), (fx, fy), current_draw_color, t2, cv2.LINE_AA)
-                                            cv2.line(canvas, (px, py), (fx, fy), (255, 255, 255), t3, cv2.LINE_AA)
+                                            draw_smooth_curve(canvas, (px, py), (fx, fy), halo_color, t1)
+                                            draw_smooth_curve(canvas, (px, py), (fx, fy), current_draw_color, t2)
+                                            draw_smooth_curve(canvas, (px, py), (fx, fy), (255, 255, 255), t3)
+                                            
+                                            # Spawn glowing neon sparkler particles along line
+                                            if random.random() < 0.4:
+                                                glow_particles.append({
+                                                    'x': fx + random.randint(-4, 4),
+                                                    'y': fy + random.randint(-4, 4),
+                                                    'vx': random.uniform(-1.0, 1.0),
+                                                    'vy': random.uniform(-1.0, 1.0),
+                                                    'life': random.randint(12, 25),
+                                                    'color': current_draw_color
+                                                })
                                         elif current_draw_tool == 'CALLIGRAPHY':
                                             offset = max(1, int(8 * depth_mult))
                                             pts = np.array([
@@ -1170,9 +1232,9 @@ def main():
                         prog = min(ui_hover_frames / 20.0, 1.0)
                         cv2.line(image, (bbx, bby+43), (bbx+int(46*prog), bby+43), bcol, 2, cv2.LINE_AA)
 
-                # ── Cursor ──
+                # ── Futuristic Holographic Cyber Cursor ──
                 if results and results.hand_landmarks:
-                    pulse = 0.5 + 0.5 * math.sin(time.time() * 6)
+                    pulse = 0.5 + 0.5 * math.sin(time.time() * 8)
                     for h_idx, hlm in enumerate(results.hand_landmarks):
                         h_label = results.handedness[h_idx][0].category_name
                         if h_label in hand_ema:
@@ -1180,8 +1242,18 @@ def main():
                             cx_cur = int(idx_tip_coords[0] * w)
                             cy_cur = int(idx_tip_coords[1] * h)
                             c_color = current_draw_color if current_draw_tool != 'ERASER' else (200, 200, 210)
-                            dim = tuple(max(0, int(c - 140)) for c in c_color)
-                            cv2.circle(image, (cx_cur, cy_cur), int(14 + pulse*5), dim, 1, cv2.LINE_AA)
+                            
+                            # Outer target ring
+                            r_outer = int(16 + pulse * 6) if is_drawing else int(12 + pulse * 3)
+                            cv2.circle(image, (cx_cur, cy_cur), r_outer, c_color, 1, cv2.LINE_AA)
+                            
+                            # Crosshair marks for precision HUD aesthetic
+                            cv2.line(image, (cx_cur - r_outer - 4, cy_cur), (cx_cur - r_outer + 2, cy_cur), c_color, 1, cv2.LINE_AA)
+                            cv2.line(image, (cx_cur + r_outer - 2, cy_cur), (cx_cur + r_outer + 4, cy_cur), c_color, 1, cv2.LINE_AA)
+                            cv2.line(image, (cx_cur, cy_cur - r_outer - 4), (cx_cur, cy_cur - r_outer + 2), c_color, 1, cv2.LINE_AA)
+                            cv2.line(image, (cx_cur, cy_cur + r_outer - 2), (cx_cur, cy_cur + r_outer + 4), c_color, 1, cv2.LINE_AA)
+                            
+                            # Center precision core dot
                             cv2.circle(image, (cx_cur, cy_cur), 3, (255, 255, 255), cv2.FILLED, cv2.LINE_AA)
 
                 # ── fps (tiny, bottom center) ──
