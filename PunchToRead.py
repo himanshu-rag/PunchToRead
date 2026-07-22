@@ -142,9 +142,10 @@ def main():
     MAX_LAYERS = 5
     layer_history = {i: [] for i in range(MAX_LAYERS)}
     was_drawing = False
-    current_stroke = []
+    required_draw_fingers = 1
+    current_strokes = [[] for _ in range(4)]
     stroke_hold_frames = 0
-    prev_draw_x, prev_draw_y = 0, 0
+    prev_draw_pos = [(0, 0) for _ in range(4)]
     
     current_draw_color = (255, 200, 100) # Light blue in BGR
     current_draw_tool = 'NEON'
@@ -581,6 +582,8 @@ def main():
                         hover_targets.append({'name': 'ACTION_UNDO', 'box': (cx_undo, btn_y, cx_undo + 70, btn_y + 35)})
                         cx_save = px1 + 190
                         hover_targets.append({'name': 'ACTION_SAVE', 'box': (cx_save, btn_y, cx_save + 70, btn_y + 35)})
+                        hover_targets.append({'name': 'ACTION_FINGERS_MINUS', 'box': (px1+20, btn_y+45, px1+65, btn_y+80)})
+                        hover_targets.append({'name': 'ACTION_FINGERS_PLUS', 'box': (px1+195, btn_y+45, px1+240, btn_y+80)})
                         
                         hovering_ui = False
                         current_target = None
@@ -615,6 +618,10 @@ def main():
                                             _, lmask = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
                                             export_img[lmask == 255] = lc[lmask == 255]
                                     cv2.imwrite('drawing_export.png', export_img)
+                                elif current_target == 'ACTION_FINGERS_MINUS':
+                                    required_draw_fingers = required_draw_fingers - 1 if required_draw_fingers > 1 else 4
+                                elif current_target == 'ACTION_FINGERS_PLUS':
+                                    required_draw_fingers = (required_draw_fingers % 4) + 1
                                 elif current_target == 'ACTION_NEW_LAYER':
                                     if len(layers) < MAX_LAYERS:
                                         layers.append({'name': f'Layer {len(layers)+1}', 'canvas': np.zeros_like(image), 'visible': True})
@@ -632,12 +639,28 @@ def main():
                             ui_hover_target = current_target
                             ui_hover_frames = 1 if current_target else 0
                             
-                        if 'I' in hand_fingers and 'M' not in hand_fingers and 'R' not in hand_fingers and 'P' not in hand_fingers and not hovering_ui:
+                        is_drawing = False
+                        is_hovering = False
+                        if not hovering_ui:
+                            if required_draw_fingers == 1:
+                                if 'I' in hand_fingers and len(hand_fingers) == 1: is_drawing = True
+                                elif 'I' in hand_fingers and 'M' in hand_fingers and len(hand_fingers) == 2: is_hovering = True
+                            elif required_draw_fingers == 2:
+                                if 'I' in hand_fingers and 'M' in hand_fingers and len(hand_fingers) == 2: is_drawing = True
+                                elif 'I' in hand_fingers and len(hand_fingers) == 1: is_hovering = True
+                            elif required_draw_fingers == 3:
+                                if 'I' in hand_fingers and 'M' in hand_fingers and 'R' in hand_fingers and len(hand_fingers) == 3: is_drawing = True
+                                elif 'I' in hand_fingers and len(hand_fingers) <= 2: is_hovering = True
+                            elif required_draw_fingers == 4:
+                                if 'I' in hand_fingers and 'M' in hand_fingers and 'R' in hand_fingers and 'P' in hand_fingers and len(hand_fingers) == 4: is_drawing = True
+                                elif 'I' in hand_fingers and len(hand_fingers) <= 2: is_hovering = True
+
+                        if is_drawing:
                             if not was_drawing and canvas is not None:
                                 hl = layer_history[active_layer_idx]
                                 hl.append(canvas.copy())
                                 if len(hl) > 10: hl.pop(0)
-                                current_stroke = []
+                                current_strokes = [[] for _ in range(4)]
                                 stroke_hold_frames = 0
                             was_drawing = True
                             
@@ -646,75 +669,81 @@ def main():
                             hand_size = math.hypot(wrist_lm.x - mcp_lm.x, wrist_lm.y - mcp_lm.y)
                             depth_mult = max(0.3, min(2.5, hand_size * 10))
                             
-                            current_stroke.append((cx, cy))
+                            active_tips = [8] # Index
+                            if required_draw_fingers >= 2: active_tips.append(12) # Middle
+                            if required_draw_fingers >= 3: active_tips.append(16) # Ring
+                            if required_draw_fingers >= 4: active_tips.append(20) # Pinky
                             
-                            if prev_draw_x != 0 and prev_draw_y != 0 and canvas is not None:
-                                if len(current_stroke) > 0:
-                                    dist_moved = math.hypot(cx - prev_draw_x, cy - prev_draw_y)
-                                    if dist_moved < 15.0: # Increased threshold for natural hand jitter
-                                        stroke_hold_frames += 1
-                                    else:
-                                        stroke_hold_frames = 0
-                                        
-                                if stroke_hold_frames >= 15 and len(current_stroke) > 15:
-                                    shape_data = recognize_shape(current_stroke)
-                                    if shape_data:
-                                        # Undo messy stroke
-                                        np.copyto(canvas, layer_history[active_layer_idx][-1])
-                                        # Draw perfect shape
-                                        draw_recognized_shape(canvas, shape_data, current_draw_color, int(4 * depth_mult), current_draw_tool)
-                                        current_stroke = [] # Prevent re-snapping
-                                        stroke_hold_frames = 0
-                            
-                            if prev_draw_x != 0 and prev_draw_y != 0 and canvas is not None and len(current_stroke) > 0:
-                                if current_draw_tool == 'PEN':
-                                    t = max(1, int(2 * depth_mult))
-                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), current_draw_color, t, cv2.LINE_AA)
-                                elif current_draw_tool == 'MARKER':
-                                    t = max(2, int(20 * depth_mult))
-                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), current_draw_color, t, cv2.LINE_AA)
-                                elif current_draw_tool == 'NEON':
-                                    t1 = max(4, int(16 * depth_mult))
-                                    t2 = max(2, int(8 * depth_mult))
-                                    t3 = max(1, int(2 * depth_mult))
-                                    halo_color = (max(0, current_draw_color[0]-50), max(0, current_draw_color[1]-50), max(0, current_draw_color[2]-50))
-                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), halo_color, t1, cv2.LINE_AA)
-                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), current_draw_color, t2, cv2.LINE_AA)
-                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), (255, 255, 255), t3, cv2.LINE_AA)
-                                elif current_draw_tool == 'CALLIGRAPHY':
-                                    offset = max(1, int(8 * depth_mult))
-                                    pts = np.array([
-                                        [prev_draw_x - offset, prev_draw_y + offset],
-                                        [prev_draw_x + offset, prev_draw_y - offset],
-                                        [cx + offset, cy - offset],
-                                        [cx - offset, cy + offset]
-                                    ], np.int32)
-                                    cv2.fillPoly(canvas, [pts], current_draw_color, cv2.LINE_AA)
-                                elif current_draw_tool == 'SPRAY':
-                                    dist = math.hypot(cx - prev_draw_x, cy - prev_draw_y)
-                                    steps = max(1, int(dist / 3))
-                                    sr = int(18 * depth_mult)
-                                    for i in range(steps):
-                                        t_step = i / steps
-                                        px = int(prev_draw_x + t_step * (cx - prev_draw_x))
-                                        py = int(prev_draw_y + t_step * (cy - prev_draw_y))
-                                        for _ in range(int(4 * depth_mult) + 1):
-                                            rx = px + random.randint(-sr, sr)
-                                            ry = py + random.randint(-sr, sr)
-                                            cv2.circle(canvas, (rx, ry), random.randint(1, max(2, int(2*depth_mult))), current_draw_color, -1)
-                                elif current_draw_tool == 'ERASER':
-                                    t = max(5, int(40 * depth_mult))
-                                    cv2.line(canvas, (prev_draw_x, prev_draw_y), (cx, cy), (0, 0, 0), t, cv2.LINE_AA)
-                            prev_draw_x, prev_draw_y = cx, cy
-                        elif 'I' in hand_fingers and 'M' in hand_fingers and 'R' not in hand_fingers and 'P' not in hand_fingers:
-                            prev_draw_x, prev_draw_y = 0, 0
+                            for fi, tip_idx in enumerate(active_tips):
+                                fx, fy = int(hand_landmarks[tip_idx].x * w), int(hand_landmarks[tip_idx].y * h)
+                                current_strokes[fi].append((fx, fy))
+                                
+                                px, py = prev_draw_pos[fi]
+                                if px != 0 and py != 0 and canvas is not None:
+                                    if len(current_strokes[fi]) > 0:
+                                        dist_moved = math.hypot(fx - px, fy - py)
+                                        if fi == 0: # Only track hold for index
+                                            if dist_moved < 15.0: stroke_hold_frames += 1
+                                            else: stroke_hold_frames = 0
+                                            
+                                        if stroke_hold_frames >= 15 and len(current_strokes[fi]) > 15:
+                                            shape_data = recognize_shape(current_strokes[fi])
+                                            if shape_data:
+                                                if fi == 0: np.copyto(canvas, layer_history[active_layer_idx][-1])
+                                                draw_recognized_shape(canvas, shape_data, current_draw_color, int(4 * depth_mult), current_draw_tool)
+                                                if fi == len(active_tips) - 1:
+                                                    current_strokes = [[] for _ in range(4)]
+                                                    stroke_hold_frames = 0
+                                                    
+                                    if px != 0 and py != 0 and canvas is not None and len(current_strokes[fi]) > 0:
+                                        if current_draw_tool == 'PEN':
+                                            t = max(1, int(2 * depth_mult))
+                                            cv2.line(canvas, (px, py), (fx, fy), current_draw_color, t, cv2.LINE_AA)
+                                        elif current_draw_tool == 'MARKER':
+                                            t = max(2, int(20 * depth_mult))
+                                            cv2.line(canvas, (px, py), (fx, fy), current_draw_color, t, cv2.LINE_AA)
+                                        elif current_draw_tool == 'NEON':
+                                            t1 = max(4, int(16 * depth_mult))
+                                            t2 = max(2, int(8 * depth_mult))
+                                            t3 = max(1, int(2 * depth_mult))
+                                            halo_color = (max(0, current_draw_color[0]-50), max(0, current_draw_color[1]-50), max(0, current_draw_color[2]-50))
+                                            cv2.line(canvas, (px, py), (fx, fy), halo_color, t1, cv2.LINE_AA)
+                                            cv2.line(canvas, (px, py), (fx, fy), current_draw_color, t2, cv2.LINE_AA)
+                                            cv2.line(canvas, (px, py), (fx, fy), (255, 255, 255), t3, cv2.LINE_AA)
+                                        elif current_draw_tool == 'CALLIGRAPHY':
+                                            offset = max(1, int(8 * depth_mult))
+                                            pts = np.array([
+                                                [px - offset, py + offset],
+                                                [px + offset, py - offset],
+                                                [fx + offset, fy - offset],
+                                                [fx - offset, fy + offset]
+                                            ], np.int32)
+                                            cv2.fillPoly(canvas, [pts], current_draw_color, cv2.LINE_AA)
+                                        elif current_draw_tool == 'SPRAY':
+                                            dist = math.hypot(fx - px, fy - py)
+                                            steps = max(1, int(dist / 3))
+                                            sr = int(18 * depth_mult)
+                                            for i in range(steps):
+                                                t_step = i / steps
+                                                sx = int(px + t_step * (fx - px))
+                                                sy = int(py + t_step * (fy - py))
+                                                for _ in range(int(4 * depth_mult) + 1):
+                                                    rx = sx + random.randint(-sr, sr)
+                                                    ry = sy + random.randint(-sr, sr)
+                                                    cv2.circle(canvas, (rx, ry), random.randint(1, max(2, int(2*depth_mult))), current_draw_color, -1)
+                                        elif current_draw_tool == 'ERASER':
+                                            t = max(5, int(40 * depth_mult))
+                                            cv2.line(canvas, (px, py), (fx, fy), (0, 0, 0), t, cv2.LINE_AA)
+                                prev_draw_pos[fi] = (fx, fy)
+                        elif is_hovering:
+                            prev_draw_pos = [(0, 0) for _ in range(4)]
                             was_drawing = False
-                            current_stroke = []
+                            current_strokes = [[] for _ in range(4)]
                             stroke_hold_frames = 0
                         else:
-                            prev_draw_x, prev_draw_y = 0, 0
+                            prev_draw_pos = [(0, 0) for _ in range(4)]
                             was_drawing = False
-                            current_stroke = []
+                            current_strokes = [[] for _ in range(4)]
                             stroke_hold_frames = 0
 
             if not results or not results.hand_landmarks:
@@ -1039,6 +1068,25 @@ def main():
                 if ui_hover_target == 'ACTION_SAVE' and ui_hover_frames > 0:
                     prog = ui_hover_frames / 20.0
                     cv2.rectangle(image, (cx_save, btn_y+31), (cx_save + int(70*prog), btn_y + 35), (100, 255, 100), cv2.FILLED)
+                btn_y += 45
+                
+                # FINGERS - Button
+                draw_rounded_rect(image, (px1+20, btn_y), (px1+65, btn_y+35), (70, 50, 70), radius=8)
+                cv2.putText(image, "-", (px1 + 37, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 200, 255), 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_FINGERS_MINUS' and ui_hover_frames > 0:
+                    prog = ui_hover_frames / 20.0
+                    cv2.rectangle(image, (px1+20, btn_y+31), (px1+20 + int(45*prog), btn_y + 35), (255, 150, 255), cv2.FILLED)
+                
+                # FINGERS Label
+                draw_rounded_rect(image, (px1+70, btn_y), (px1+190, btn_y+35), (50, 50, 60), radius=8)
+                cv2.putText(image, f"{required_draw_fingers} FINGERS", (px1 + 85, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, (255, 200, 255), 1, cv2.LINE_AA)
+                
+                # FINGERS + Button
+                draw_rounded_rect(image, (px1+195, btn_y), (px1+240, btn_y+35), (70, 50, 70), radius=8)
+                cv2.putText(image, "+", (px1 + 210, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 200, 255), 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_FINGERS_PLUS' and ui_hover_frames > 0:
+                    prog = ui_hover_frames / 20.0
+                    cv2.rectangle(image, (px1+195, btn_y+31), (px1+195 + int(45*prog), btn_y + 35), (255, 150, 255), cv2.FILLED)
                 
                 # 2. Right Color Panel (slides in from right)
                 cp_w, cp_h = 280, 420
