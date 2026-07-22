@@ -553,52 +553,39 @@ def main():
                         cp_w, cp_h = 280, 420
                         cp_x1, cp_y1 = w - 310, int(h/2) - int(cp_h/2)
                         
-                        gx, gy = cp_x1 + 60, cp_y1 + 60
-                        for c in range(2):
-                            for r in range(7):
-                                cx_c = gx + c * 80
-                                cy_c = gy + r * 50
-                                hover_targets.append({
-                                    'name': f'COLOR_{c}_{r}', 
-                                    'box': (cx_c - 20, cy_c - 20, cx_c + 20, cy_c + 20), 
-                                    'color': color_palette[c][r]
-                                })
-                        
-                        # Action buttons moved to Project Board (Left Side)
-                        # Horizontal targets (Brushes)
-                        h_start_x = int(w/2) - 250
-                        h_y = h - 90
-                        x_step = 500 / 6
-                        tools_list = ['PEN', 'MARKER', 'NEON', 'CALLIGRAPHY', 'SPRAY', 'ERASER']
-                        for i, tool in enumerate(tools_list):
-                            bx = h_start_x + i * x_step
-                            hover_targets.append({'name': tool, 'box': (bx, h_y, bx + x_step - 5, h_y + 60), 'text': tool[:3]})
-                        
-                        # Project Board targets (Left Side)
-                        pb_w, pb_h = 280, 360
-                        px1 = 30
-                        py1 = int(h/2) - int(pb_h/2)
-                        
-                        hover_targets.append({'name': 'ACTION_NEW_LAYER', 'box': (px1+20, py1+55, px1+pb_w-20, py1+90)})
-                        
-                        ly_y = py1 + 110
-                        for li in range(len(layers)):
-                            hover_targets.append({'name': f'LAYER_SELECT_{li}', 'box': (px1+15, ly_y-8, px1+pb_w-40, ly_y+25)})
-                            hover_targets.append({'name': f'LAYER_VIS_{li}', 'box': (px1+15, ly_y+3, px1+45, ly_y+13)})
-                            ly_y += 40
-                            
-                        # Action Buttons in Project Board
-                        btn_y = py1 + 310
-                        cx_clear = px1 + 20
-                        hover_targets.append({'name': 'ACTION_CLEAR', 'box': (cx_clear, btn_y, cx_clear + 70, btn_y + 35)})
-                        cx_undo = px1 + 105
-                        hover_targets.append({'name': 'ACTION_UNDO', 'box': (cx_undo, btn_y, cx_undo + 70, btn_y + 35)})
-                        cx_save = px1 + 190
-                        hover_targets.append({'name': 'ACTION_SAVE', 'box': (cx_save, btn_y, cx_save + 70, btn_y + 35)})
-                        hover_targets.append({'name': 'ACTION_BACK', 'box': (20, 20, 120, 60)})
-                        hover_targets.append({'name': 'ACTION_FINGERS_MINUS', 'box': (px1+20, btn_y+45, px1+65, btn_y+80)})
-                        hover_targets.append({'name': 'ACTION_FINGERS_PLUS', 'box': (px1+195, btn_y+45, px1+240, btn_y+80)})
-                        hover_targets.append({'name': 'ACTION_MIRROR', 'box': (px1+20, btn_y+90, px1+240, btn_y+125)})
+                        # ── Color swatches in top bar ──
+                        swatch_colors_flat = color_palette[0] + color_palette[1]
+                        n_show = 8
+                        sw_gap = 30
+                        sw_x_start = w - n_show * sw_gap - 20
+                        for si in range(n_show):
+                            sx = sw_x_start + si * sw_gap + 12
+                            sy = 28  # bar_y=0 + bar_h//2
+                            ci, ri = si // 7, si % 7
+                            hover_targets.append({'name': f'COLOR_{ci}_{ri}', 'box': (sx-14, 8, sx+14, 48), 'color': swatch_colors_flat[si % len(swatch_colors_flat)]})
+
+                        # ── Tool icons in top bar ──
+                        tool_list = ['PEN', 'MARKER', 'NEON', 'CALLIGRAPHY', 'SPRAY', 'ERASER']
+                        t_total = len(tool_list) * 46
+                        t_start = w//2 - t_total//2
+                        for ti, tool in enumerate(tool_list):
+                            tx = t_start + ti * 46 + 23
+                            hover_targets.append({'name': tool, 'box': (tx-22, 4, tx+22, 52)})
+
+                        # ── Back button ──
+                        hover_targets.append({'name': 'ACTION_BACK', 'box': (18, 14, 94, 42)})
+
+                        # ── Bottom-left HUD (fingers) ──
+                        hud_x, hud_y = 18, h - 78
+                        hover_targets.append({'name': 'ACTION_FINGERS_MINUS', 'box': (hud_x+8,  hud_y+30, hud_x+38,  hud_y+52)})
+                        hover_targets.append({'name': 'ACTION_FINGERS_PLUS',  'box': (hud_x+142, hud_y+30, hud_x+172, hud_y+52)})
+                        hover_targets.append({'name': 'ACTION_MIRROR',        'box': (hud_x+110, hud_y+4,  hud_x+178, hud_y+26)})
+
+                        # ── Bottom-right HUD (undo/clear/save) ──
+                        br_x, br_y = w - 178, h - 78
+                        for bi, bname in enumerate(['ACTION_UNDO', 'ACTION_CLEAR', 'ACTION_SAVE']):
+                            bbx = br_x + 8 + bi * 52
+                            hover_targets.append({'name': bname, 'box': (bbx, br_y+8, bbx+46, br_y+52)})
                         
                         hovering_ui = False
                         current_target = None
@@ -1025,236 +1012,153 @@ def main():
                     swipe_arrow_frames -= 1
                 
             elif app_mode == 'DRAW_MODE':
-                # Panel entrance animations (staggered)
-                anim_bg = ease_out_cubic(min(mode_enter_frame / 12.0, 1.0))
-                anim_left = ease_out_cubic(min(mode_enter_frame / 18.0, 1.0))
-                anim_right = ease_out_cubic(min(max(0, mode_enter_frame - 4) / 18.0, 1.0))
-                anim_bottom = ease_out_cubic(min(max(0, mode_enter_frame - 7) / 18.0, 1.0))
-                anim_top = ease_out_cubic(min(max(0, mode_enter_frame - 2) / 18.0, 1.0))
-                
-                overlay = image.copy()
-                cv2.rectangle(overlay, (0, 0), (w, h), (15, 15, 20), cv2.FILLED)
-                cv2.addWeighted(overlay, 0.6 * anim_bg, image, 1.0 - 0.6 * anim_bg, 0, image)
-                
-                # BACK button
-                draw_rounded_rect(image, (20, 20), (110, 52), (38, 38, 48), radius=8)
-                cv2.putText(image, "< BACK", (30, 41), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 200), 1, cv2.LINE_AA)
-                if ui_hover_target == 'ACTION_BACK' and ui_hover_frames > 0:
-                    prog = min(ui_hover_frames / 20.0, 1.0)
-                    cv2.rectangle(image, (20, 48), (20 + int(90*prog), 52), (120, 90, 255), cv2.FILLED)
-                
-                # Composite all visible layers
+                anim_t = ease_out_cubic(min(mode_enter_frame / 18.0, 1.0))
+
+                # ── Canvas composite ──
                 for layer_data in layers:
                     if layer_data['visible']:
                         lc = layer_data['canvas']
                         gray_lc = cv2.cvtColor(lc, cv2.COLOR_BGR2GRAY)
                         _, lmask = cv2.threshold(gray_lc, 1, 255, cv2.THRESH_BINARY)
                         image[lmask == 255] = lc[lmask == 255]
-                    
-                # 1. Left Project Board (slides in from left)
-                pb_w, pb_h = 280, 360
-                px1 = int(-pb_w + anim_left * (30 + pb_w))
-                py1 = int(h/2) - int(pb_h/2)
-                px2, py2 = px1 + pb_w, py1 + pb_h
-                draw_glass_panel(image, (px1, py1), (px2, py2), radius=20, alpha=0.7, bg_color=(40, 40, 45))
-                cv2.putText(image, "LAYERS", (px1 + 102, py1 + 32), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 100, 120), 1, cv2.LINE_AA)
-                
-                # New Layer button
-                if len(layers) < MAX_LAYERS:
-                    nl_y = py1 + 55
-                    draw_rounded_rect(image, (px1+20, nl_y), (px2-20, nl_y+35), (50, 50, 55), radius=8)
-                    cv2.putText(image, "+ New Layer", (px1+80, nl_y+24), cv2.FONT_HERSHEY_DUPLEX, 0.5, (180, 180, 180), 1, cv2.LINE_AA)
-                    if ui_hover_target == 'ACTION_NEW_LAYER' and ui_hover_frames > 0:
-                        bar_w = int((ui_hover_frames / 20.0) * (pb_w - 40))
-                        cv2.rectangle(image, (px1+20, nl_y+30), (px1+20+bar_w, nl_y+35), (140, 200, 255), cv2.FILLED)
-                
-                # Layer list
-                ly_y = py1 + 110
-                for li, ld in enumerate(layers):
-                    is_active = (li == active_layer_idx)
-                    is_visible = ld['visible']
-                    
-                    if is_active:
-                        draw_rounded_rect(image, (px1+15, ly_y-8), (px2-15, ly_y+25), (60, 50, 80), radius=6)
-                    
-                    # Eye icon (visibility toggle)
-                    eye_c = (180, 220, 255) if is_visible else (80, 80, 80)
-                    cv2.ellipse(image, (px1+30, ly_y+8), (8, 5), 0, 0, 360, eye_c, 1, cv2.LINE_AA)
-                    if is_visible:
-                        cv2.circle(image, (px1+30, ly_y+8), 3, eye_c, cv2.FILLED, cv2.LINE_AA)
-                    
-                    # Layer name
-                    lnc = (255, 255, 255) if is_active else (150, 150, 150)
-                    cv2.putText(image, ld['name'], (px1+50, ly_y+18), cv2.FONT_HERSHEY_DUPLEX, 0.5, lnc, 1, cv2.LINE_AA)
-                    
-                    # Hover progress ring
-                    t_name = f'LAYER_SELECT_{li}'
-                    vis_name = f'LAYER_VIS_{li}'
-                    if ui_hover_target == t_name and ui_hover_frames > 0:
+
+                # ── Mirror guide ──
+                if mirror_mode:
+                    cv2.line(image, (w//2, 0), (w//2, h), (55, 44, 100), 1, cv2.LINE_AA)
+
+                # ─────────────────────────────────────────────────────────────
+                # TOP BAR  (single unified control strip)
+                # ─────────────────────────────────────────────────────────────
+                bar_h = 56
+                bar_alpha = 0.82
+                bar_y = int(-bar_h + anim_t * (bar_h + 2))
+                bar_bg = image[max(0,bar_y):max(0,bar_y)+bar_h, :].copy()
+                if bar_bg.shape[0] > 0:
+                    dark = np.full_like(bar_bg, (22, 22, 28), dtype=np.uint8)
+                    cv2.addWeighted(dark, bar_alpha, bar_bg, 1-bar_alpha, 0, bar_bg)
+                    image[max(0,bar_y):max(0,bar_y)+bar_h, :] = bar_bg
+                # subtle bottom border
+                cv2.line(image, (0, bar_y+bar_h-1), (w, bar_y+bar_h-1), (55, 55, 75), 1, cv2.LINE_AA)
+
+                # ── BACK button (left side) ──
+                bx, by = 18, bar_y + 14
+                draw_rounded_rect(image, (bx, by), (bx+76, by+28), (35, 35, 45), radius=6)
+                cv2.putText(image, "< BACK", (bx+8, by+19), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 175), 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_BACK' and ui_hover_frames > 0:
+                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    cv2.line(image, (bx, by+27), (bx + int(76*prog), by+27), (120, 90, 255), 2, cv2.LINE_AA)
+
+                # ── Tool icons (center) ──
+                tool_list  = ['PEN', 'MARKER', 'NEON', 'CALLIGRAPHY', 'SPRAY', 'ERASER']
+                tool_icons = ['P', 'M', 'N', 'C', 'S', 'E']
+                t_total = len(tool_list) * 46
+                t_start = w//2 - t_total//2
+                for ti, (tool, icon) in enumerate(zip(tool_list, tool_icons)):
+                    tx = t_start + ti * 46 + 23
+                    ty_center = bar_y + bar_h//2
+                    active = (current_draw_tool == tool)
+                    if active:
+                        draw_rounded_rect(image, (tx-18, ty_center-14), (tx+18, ty_center+14), (55, 44, 100), radius=5)
+                    ic = (220, 220, 240) if active else (90, 90, 110)
+                    cv2.putText(image, icon, (tx-5, ty_center+6), cv2.FONT_HERSHEY_SIMPLEX, 0.45, ic, 1, cv2.LINE_AA)
+                    if ui_hover_target == tool and ui_hover_frames > 0:
                         angle = int((ui_hover_frames / 20.0) * 360)
-                        cv2.ellipse(image, (px2-30, ly_y+8), (12, 12), 0, 0, angle, (200, 200, 200), 2, cv2.LINE_AA)
-                    if ui_hover_target == vis_name and ui_hover_frames > 0:
+                        cv2.ellipse(image, (tx, ty_center), (20, 20), -90, 0, angle, (120, 90, 255), 1, cv2.LINE_AA)
+
+                # ── Color swatches (right side, 7 dots) ──
+                swatch_colors = [row[0] for row in color_palette] + [row[1] for row in color_palette]
+                swatch_colors = color_palette[0] + color_palette[1]  # 14 colors flat
+                n_show = 8
+                sw_gap = 30
+                sw_x_start = w - n_show * sw_gap - 20
+                for si in range(n_show):
+                    scol = swatch_colors[si % len(swatch_colors)]
+                    sx = sw_x_start + si * sw_gap + 12
+                    sy = bar_y + bar_h//2
+                    active_c = (current_draw_color == scol)
+                    r = 10 if not active_c else 12
+                    cv2.circle(image, (sx, sy), r, scol, cv2.FILLED, cv2.LINE_AA)
+                    if active_c:
+                        cv2.circle(image, (sx, sy), r+3, (220, 220, 240), 1, cv2.LINE_AA)
+                    cn = f'COLOR_{si//7}_{si%7}'
+                    if ui_hover_target == cn and ui_hover_frames > 0:
                         angle = int((ui_hover_frames / 20.0) * 360)
-                        cv2.ellipse(image, (px1+30, ly_y+8), (12, 12), 0, 0, angle, (200, 200, 200), 2, cv2.LINE_AA)
-                    
-                    ly_y += 40
-                
-                # Action Buttons inside Project Board
-                btn_y = py1 + 310
-                
-                # CLR Button
-                cx_clear = px1 + 20
-                draw_rounded_rect(image, (cx_clear, btn_y), (cx_clear + 70, btn_y + 32), (42, 42, 52), radius=6)
-                cv2.putText(image, "CLEAR", (cx_clear + 8, btn_y + 21), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200, 80, 80), 1, cv2.LINE_AA)
-                if ui_hover_target == 'ACTION_CLEAR' and ui_hover_frames > 0:
-                    prog = min(ui_hover_frames / 20.0, 1.0)
-                    cv2.rectangle(image, (cx_clear, btn_y+28), (cx_clear + int(70*prog), btn_y + 32), (200, 80, 80), cv2.FILLED)
-                    
-                # UNDO Button
-                cx_undo = px1 + 105
-                draw_rounded_rect(image, (cx_undo, btn_y), (cx_undo + 70, btn_y + 32), (42, 42, 52), radius=6)
-                cv2.putText(image, "UNDO", (cx_undo + 12, btn_y + 21), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (170, 170, 200), 1, cv2.LINE_AA)
-                if ui_hover_target == 'ACTION_UNDO' and ui_hover_frames > 0:
-                    prog = min(ui_hover_frames / 20.0, 1.0)
-                    cv2.rectangle(image, (cx_undo, btn_y+28), (cx_undo + int(70*prog), btn_y + 32), (90, 180, 255), cv2.FILLED)
-                    
-                # SAVE Button
-                cx_save = px1 + 190
-                draw_rounded_rect(image, (cx_save, btn_y), (cx_save + 70, btn_y + 32), (42, 52, 42), radius=6)
-                cv2.putText(image, "SAVE", (cx_save + 15, btn_y + 21), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (72, 199, 142), 1, cv2.LINE_AA)
-                if ui_hover_target == 'ACTION_SAVE' and ui_hover_frames > 0:
-                    prog = min(ui_hover_frames / 20.0, 1.0)
-                    cv2.rectangle(image, (cx_save, btn_y+28), (cx_save + int(70*prog), btn_y + 32), (72, 199, 142), cv2.FILLED)
-                btn_y += 45
-                
-                # FINGERS - Button
-                draw_rounded_rect(image, (px1+20, btn_y), (px1+62, btn_y+32), (42, 42, 52), radius=6)
-                cv2.putText(image, "-", (px1 + 35, btn_y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (140, 120, 220), 1, cv2.LINE_AA)
+                        cv2.ellipse(image, (sx, sy), (16, 16), -90, 0, angle, (255, 255, 255), 1, cv2.LINE_AA)
+
+                # ── Bottom-left HUD: fingers + mirror ──
+                hud_x, hud_y = 18, h - 78
+                hud_bg = image[hud_y:hud_y+60, hud_x:hud_x+180].copy()
+                dark2 = np.full_like(hud_bg, (22, 22, 28), dtype=np.uint8)
+                cv2.addWeighted(dark2, 0.78, hud_bg, 0.22, 0, hud_bg)
+                image[hud_y:hud_y+60, hud_x:hud_x+180] = hud_bg
+                draw_rounded_rect(image, (hud_x, hud_y), (hud_x+180, hud_y+60), (40, 40, 52), radius=8)
+
+                f_lbl = "PEN" if required_draw_fingers == 5 else f"{required_draw_fingers}F"
+                cv2.putText(image, f"DRAW: {f_lbl}", (hud_x+12, hud_y+22), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (100, 90, 160), 1, cv2.LINE_AA)
+
+                # Minus / plus
+                draw_rounded_rect(image, (hud_x+8, hud_y+30), (hud_x+38, hud_y+52), (35, 35, 48), radius=4)
+                cv2.putText(image, "-", (hud_x+18, hud_y+46), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (120, 100, 200), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_FINGERS_MINUS' and ui_hover_frames > 0:
                     prog = min(ui_hover_frames / 20.0, 1.0)
-                    cv2.rectangle(image, (px1+20, btn_y+28), (px1+20 + int(42*prog), btn_y + 32), (120, 90, 255), cv2.FILLED)
-                
-                # FINGERS Label
-                draw_rounded_rect(image, (px1+68, btn_y), (px1+192, btn_y+32), (32, 32, 42), radius=6)
-                lbl = "PEN" if required_draw_fingers == 5 else f"{required_draw_fingers}F"
-                txt_x = px1 + 118 if required_draw_fingers != 5 else px1 + 116
-                cv2.putText(image, lbl, (txt_x, btn_y + 21), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (160, 140, 240), 1, cv2.LINE_AA)
-                
-                # FINGERS + Button
-                draw_rounded_rect(image, (px1+198, btn_y), (px1+240, btn_y+32), (42, 42, 52), radius=6)
-                cv2.putText(image, "+", (px1 + 211, btn_y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (140, 120, 220), 1, cv2.LINE_AA)
+                    cv2.line(image, (hud_x+8, hud_y+51), (hud_x+8+int(30*prog), hud_y+51), (120, 90, 255), 2, cv2.LINE_AA)
+
+                draw_rounded_rect(image, (hud_x+44, hud_y+30), (hud_x+136, hud_y+52), (28, 28, 38), radius=4)
+
+                draw_rounded_rect(image, (hud_x+142, hud_y+30), (hud_x+172, hud_y+52), (35, 35, 48), radius=4)
+                cv2.putText(image, "+", (hud_x+150, hud_y+46), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (120, 100, 200), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_FINGERS_PLUS' and ui_hover_frames > 0:
                     prog = min(ui_hover_frames / 20.0, 1.0)
-                    cv2.rectangle(image, (px1+198, btn_y+28), (px1+198 + int(42*prog), btn_y + 32), (120, 90, 255), cv2.FILLED)
-                
-                btn_y += 45
-                mirror_col = (32, 48, 38) if mirror_mode else (42, 42, 52)
-                mirror_txt_col = (72, 199, 142) if mirror_mode else (130, 130, 150)
-                draw_rounded_rect(image, (px1+20, btn_y), (px1+240, btn_y+32), mirror_col, radius=6)
-                mirror_lbl = "MIRROR  ON" if mirror_mode else "MIRROR  OFF"
-                cv2.putText(image, mirror_lbl, (px1 + 62, btn_y + 21), cv2.FONT_HERSHEY_SIMPLEX, 0.38, mirror_txt_col, 1, cv2.LINE_AA)
+                    cv2.line(image, (hud_x+142, hud_y+51), (hud_x+142+int(30*prog), hud_y+51), (120, 90, 255), 2, cv2.LINE_AA)
+
+                # Mirror dot indicator
+                mir_col = (72, 199, 142) if mirror_mode else (55, 55, 75)
+                cv2.circle(image, (hud_x+165, hud_y+14), 5, mir_col, cv2.FILLED, cv2.LINE_AA)
+                cv2.putText(image, "MIR", (hud_x+125, hud_y+22), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (80, 80, 100), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_MIRROR' and ui_hover_frames > 0:
                     prog = min(ui_hover_frames / 20.0, 1.0)
-                    cv2.rectangle(image, (px1+20, btn_y+28), (px1+20 + int(220*prog), btn_y + 32), (72, 199, 142), cv2.FILLED)
-                
-                # Symmetry guide line when mirror is on
-                if mirror_mode:
-                    cv2.line(image, (w//2, 0), (w//2, h), (60, 48, 120), 1, cv2.LINE_AA)
-                
-                # 2. Right Color Panel (slides in from right)
-                cp_w, cp_h = 280, 420
-                cp_x1 = int(w - 310 * anim_right)
-                cp_y1 = int(h/2) - int(cp_h/2)
-                cp_x2, cp_y2 = cp_x1 + cp_w, cp_y1 + cp_h
-                draw_glass_panel(image, (cp_x1, cp_y1), (cp_x2, cp_y2), radius=20, alpha=0.8, bg_color=(35, 35, 40))
-                cv2.putText(image, "PALETTE", (cp_x1 + 100, cp_y1 + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (90, 90, 110), 1, cv2.LINE_AA)
-                
-                gx, gy = cp_x1 + 60, cp_y1 + 60
-                for c in range(2):
-                    for r in range(7):
-                        cx_c = gx + c * 80
-                        cy_c = gy + r * 50
-                        c_val = color_palette[c][r]
-                        
-                        # Active color highlight
-                        if current_draw_color == c_val:
-                            cv2.circle(image, (cx_c, cy_c), 20, (255, 255, 255), 2, cv2.LINE_AA)
-                            
-                        # Color swatch
-                        cv2.circle(image, (cx_c, cy_c), 16, c_val, cv2.FILLED, cv2.LINE_AA)
-                        
-                        # Hover progress
-                        t_name = f'COLOR_{c}_{r}'
-                        if ui_hover_target == t_name and ui_hover_frames > 0:
-                            angle = int((ui_hover_frames / 20.0) * 360)
-                            cv2.ellipse(image, (cx_c, cy_c), (22, 22), -90, 0, angle, (255, 255, 255), 2, cv2.LINE_AA)
-                            
-                swatch_x = cp_x1 + 20
-                swatch_y = cp_y1 + 260
-                draw_rounded_rect(image, (swatch_x, swatch_y), (swatch_x + 40, swatch_y + 40), current_draw_color, radius=10)
-                cv2.putText(image, "Active", (swatch_x + 50, swatch_y + 25), cv2.FONT_HERSHEY_DUPLEX, 0.5, (150, 150, 150), 1, cv2.LINE_AA)
+                    cv2.ellipse(image, (hud_x+165, hud_y+14), (9, 9), -90, 0, int(360*prog), (72, 199, 142), 1, cv2.LINE_AA)
 
-                # 3. Horizontal Bottom Palette (slides up from bottom)
-                h_start_x = int(w/2) - 250
-                h_y = int(h + 70 - 160 * anim_bottom)
-                draw_glass_panel(image, (h_start_x, h_y), (h_start_x + 500, h_y + 70), radius=35, alpha=0.8, bg_color=(35, 35, 40))
-                
-                x_step = 500 / 6
-                h_targets = ['PEN', 'MARKER', 'NEON', 'CALLIG', 'SPRAY', 'ERASER']
-                for i, tool in enumerate(h_targets):
-                    slot_x = h_start_x + i * x_step + x_step/2
-                    slot_y = h_y + 35
-                    
-                    full_tool_name = tool
-                    if tool == 'CALLIG': full_tool_name = 'CALLIGRAPHY'
-                    
-                    color = (255, 255, 255) if current_draw_tool == full_tool_name else (150, 150, 150)
-                    ix, iy = int(slot_x), slot_y
-                    
-                    if tool == 'PEN':
-                        cv2.line(image, (ix-10, iy+10), (ix+10, iy-10), color, 2, cv2.LINE_AA)
-                    elif tool == 'MARKER':
-                        cv2.line(image, (ix-10, iy+10), (ix+10, iy-10), color, 8, cv2.LINE_AA)
-                    elif tool == 'NEON':
-                        cv2.line(image, (ix-10, iy+10), (ix+10, iy-10), color, 8, cv2.LINE_AA)
-                        core_c = (255,255,255) if current_draw_tool == full_tool_name else (100,100,100)
-                        cv2.line(image, (ix-10, iy+10), (ix+10, iy-10), core_c, 2, cv2.LINE_AA)
-                    elif tool == 'CALLIG':
-                        pts = np.array([
-                            [ix - 12, iy + 8],
-                            [ix + 4, iy - 8],
-                            [ix + 12, iy - 8],
-                            [ix - 4, iy + 8]
-                        ], np.int32)
-                        cv2.fillPoly(image, [pts], color, cv2.LINE_AA)
-                    elif tool == 'SPRAY':
-                        # Fixed deterministic spray pattern for UI
-                        offsets = [(-6,-2), (4,5), (-3,6), (5,-4), (0,0), (-5,-7), (6,-8), (8,1)]
-                        for dx, dy in offsets:
-                            cv2.circle(image, (ix+dx, iy+dy), 1, color, -1)
-                    elif tool == 'ERASER':
-                        cv2.rectangle(image, (ix-10, iy-10), (ix+10, iy+10), color, 2, cv2.LINE_AA)
-                        cv2.line(image, (ix-10, iy), (ix+10, iy), color, 2, cv2.LINE_AA)
-                    
-                    if ui_hover_target == full_tool_name and ui_hover_frames > 0:
-                        angle = int((ui_hover_frames / 20.0) * 360)
-                        cv2.ellipse(image, (int(slot_x), slot_y), (22, 22), 0, 0, angle, (200, 200, 200), 2, cv2.LINE_AA)
+                # ── Undo / Clear / Save (bottom right) ──
+                br_x, br_y = w - 178, h - 78
+                br_bg = image[br_y:br_y+60, br_x:br_x+160].copy()
+                dark3 = np.full_like(br_bg, (22, 22, 28), dtype=np.uint8)
+                cv2.addWeighted(dark3, 0.78, br_bg, 0.22, 0, br_bg)
+                image[br_y:br_y+60, br_x:br_x+160] = br_bg
+                draw_rounded_rect(image, (br_x, br_y), (br_x+160, br_y+60), (40, 40, 52), radius=8)
 
-                # Cursor rendering (pulsing glow)
+                for bi, (bname, blbl, bcol) in enumerate([
+                    ('ACTION_UNDO', 'UNDO', (90, 150, 230)),
+                    ('ACTION_CLEAR', 'CLR',  (200, 80, 80)),
+                    ('ACTION_SAVE', 'SAVE', (72, 199, 142)),
+                ]):
+                    bbx = br_x + 8 + bi * 52
+                    bby = br_y + 8
+                    draw_rounded_rect(image, (bbx, bby), (bbx+46, bby+44), (32, 32, 42), radius=5)
+                    cv2.putText(image, blbl, (bbx+5, bby+28), cv2.FONT_HERSHEY_SIMPLEX, 0.35, bcol, 1, cv2.LINE_AA)
+                    if ui_hover_target == bname and ui_hover_frames > 0:
+                        prog = min(ui_hover_frames / 20.0, 1.0)
+                        cv2.line(image, (bbx, bby+43), (bbx+int(46*prog), bby+43), bcol, 2, cv2.LINE_AA)
+
+                # ── Cursor ──
                 if results and results.hand_landmarks:
-                    pulse = 0.5 + 0.5 * math.sin(time.time() * 5)
+                    pulse = 0.5 + 0.5 * math.sin(time.time() * 6)
                     for h_idx, hlm in enumerate(results.hand_landmarks):
                         h_label = results.handedness[h_idx][0].category_name
                         if h_label in hand_ema:
                             idx_tip_coords = hand_ema[h_label][8]
-                            cx, cy = int(idx_tip_coords[0] * w), int(idx_tip_coords[1] * h)
-                            
-                            c_color = current_draw_color if current_draw_tool != 'ERASER' else (255, 255, 255)
-                            glow_r = int(20 + pulse * 8)
-                            glow_c = tuple(max(0, c - 100) for c in c_color)
-                            cv2.circle(image, (cx, cy), glow_r, glow_c, 1, cv2.LINE_AA)
-                            cv2.circle(image, (cx, cy), int(10 + pulse * 3), c_color, 2, cv2.LINE_AA)
-                            cv2.circle(image, (cx, cy), 4, (255, 255, 255), cv2.FILLED, cv2.LINE_AA)
+                            cx_cur = int(idx_tip_coords[0] * w)
+                            cy_cur = int(idx_tip_coords[1] * h)
+                            c_color = current_draw_color if current_draw_tool != 'ERASER' else (200, 200, 210)
+                            dim = tuple(max(0, int(c - 140)) for c in c_color)
+                            cv2.circle(image, (cx_cur, cy_cur), int(14 + pulse*5), dim, 1, cv2.LINE_AA)
+                            cv2.circle(image, (cx_cur, cy_cur), 3, (255, 255, 255), cv2.FILLED, cv2.LINE_AA)
+
+                # ── fps (tiny, bottom center) ──
+                cv2.putText(image, f'{int(fps)}fps', (w//2 - 15, h - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (50, 50, 65), 1, cv2.LINE_AA)
+
+                # Rebuild hover targets to match new layout
+                btn_y_ref = 0  # unused sentinel
 
             cv2.imshow('Precise Finger Counter', image)
             
