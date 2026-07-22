@@ -538,7 +538,15 @@ def main():
                             cx, cy = int((index_tip.x + dx * 1.5) * w), int((index_tip.y + dy * 1.5) * h)
                             cv2.circle(image, (cx, cy), 3, (0, 0, 255), -1) # Red dot for pen tip
                         else:
-                            cx, cy = int(index_tip.x * w), int(index_tip.y * h)
+                            # Use first detected extended fingertip
+                            tip_ids_order = [8, 12, 16, 20]
+                            finger_name_order = ['I', 'M', 'R', 'P']
+                            cursor_tip = index_tip
+                            for fni, fn in enumerate(finger_name_order):
+                                if fn in hand_fingers:
+                                    cursor_tip = hand_landmarks[tip_ids_order[fni]]
+                                    break
+                            cx, cy = int(cursor_tip.x * w), int(cursor_tip.y * h)
                         
                         hover_targets = []
                         # Color Panel Targets (Right Side)
@@ -655,22 +663,14 @@ def main():
                             
                         is_drawing = False
                         is_hovering = False
+                        n = len(hand_fingers)
                         if not hovering_ui:
-                            if required_draw_fingers == 1:
-                                if 'I' in hand_fingers and len(hand_fingers) == 1: is_drawing = True
-                                elif 'I' in hand_fingers and 'M' in hand_fingers and len(hand_fingers) == 2: is_hovering = True
-                            elif required_draw_fingers == 2:
-                                if 'I' in hand_fingers and 'M' in hand_fingers and len(hand_fingers) == 2: is_drawing = True
-                                elif 'I' in hand_fingers and len(hand_fingers) == 1: is_hovering = True
-                            elif required_draw_fingers == 3:
-                                if 'I' in hand_fingers and 'M' in hand_fingers and 'R' in hand_fingers and len(hand_fingers) == 3: is_drawing = True
-                                elif 'I' in hand_fingers and len(hand_fingers) <= 2: is_hovering = True
-                            elif required_draw_fingers == 4:
-                                if 'I' in hand_fingers and 'M' in hand_fingers and 'R' in hand_fingers and 'P' in hand_fingers and len(hand_fingers) == 4: is_drawing = True
-                                elif 'I' in hand_fingers and len(hand_fingers) <= 2: is_hovering = True
-                            elif required_draw_fingers == 5:
-                                if 'M' not in hand_fingers and len(hand_fingers) < 4: is_drawing = True
-                                elif 'M' in hand_fingers: is_hovering = True
+                            if required_draw_fingers == 5:  # PEN mode
+                                if 'M' not in hand_fingers: is_drawing = True
+                                else: is_hovering = True
+                            else:
+                                if n == required_draw_fingers: is_drawing = True
+                                elif n > 0 and n != required_draw_fingers: is_hovering = True
 
                         if is_drawing:
                             if not was_drawing and canvas is not None:
