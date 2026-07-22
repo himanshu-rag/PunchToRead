@@ -286,7 +286,7 @@ def main():
             active_fingers_texts = []
             active_news_right = []
             active_news_left = []
-            pinch_detected = False
+            palm_detected = False
             
             active_handedness = set()
             h, w, c = image.shape
@@ -320,9 +320,7 @@ def main():
                     index_tip = hand_landmarks[8]
                     middle_tip = hand_landmarks[12]
                     
-                    # Make the 3-finger pinch more forgiving
-                    if get_distance3d(thumb_tip, index_tip) < 0.12 and get_distance3d(thumb_tip, middle_tip) < 0.12:
-                        pinch_detected = True
+                    # Palm detection is checked after fingers are parsed
                     
                     dist_tip_to_pinky_base = get_distance3d(thumb_tip, pinky_base)
                     dist_ip_to_pinky_base = get_distance3d(thumb_ip, pinky_base)
@@ -339,6 +337,9 @@ def main():
                         if get_distance3d(wrist, tip) > get_distance3d(wrist, pip):
                             active_fingers_texts.append(finger_names[id])
                             hand_fingers.append(finger_names[id])
+                            
+                    if len(hand_fingers) == 5:
+                        palm_detected = True
                             
                     if app_mode == 'MAIN_MENU':
                         if len(hand_fingers) == 1 and 'I' in hand_fingers:
@@ -366,7 +367,7 @@ def main():
                             menu_selection_frames = 0
                             
                     elif app_mode == 'NEWS_MENU':
-                        if pinch_detected:
+                        if palm_detected:
                             exit_frames += 1
                             if exit_frames > 15:
                                 app_mode = 'MAIN_MENU'
@@ -406,7 +407,7 @@ def main():
                         elif len(hand_fingers) > 0: punch_frames = 0
                             
                     elif app_mode == 'CONTENT_MODE':
-                        if pinch_detected:
+                        if palm_detected:
                             exit_frames += 1
                             if exit_frames >= 15:
                                 app_mode = 'MAIN_MENU'
@@ -452,7 +453,7 @@ def main():
                                     swipe_arrow_dir = -1
                                     
                     elif app_mode == 'DRAW_MODE':
-                        if pinch_detected:
+                        if palm_detected:
                             exit_frames += 1
                             if exit_frames > 15:
                                 app_mode = 'MAIN_MENU'
