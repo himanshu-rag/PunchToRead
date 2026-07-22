@@ -113,6 +113,168 @@ def put_wrapped_text(img, text, position, font, font_scale, color, thickness, ma
         cv2.putText(img, line, (position[0], y), font, font_scale, color, thickness, cv2.LINE_AA)
         y += int(h * 1.6)
 
+def rotate_3d_point(x, y, z, rx, ry, rz):
+    # Rotate around X-axis (Pitch)
+    if rx != 0:
+        rad = math.radians(rx)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+        y, z = y * cos_a - z * sin_a, y * sin_a + z * cos_a
+    # Rotate around Y-axis (Yaw)
+    if ry != 0:
+        rad = math.radians(ry)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+        x, z = x * cos_a + z * sin_a, -x * sin_a + z * cos_a
+    # Rotate around Z-axis (Roll)
+    if rz != 0:
+        rad = math.radians(rz)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+        x, y = x * cos_a - y * sin_a, x * sin_a + y * cos_a
+    return x, y, z
+
+def project_point(x, y, z, rx, ry, zoom, center_x, center_y, distance=600.0, f=550.0):
+    # Global camera rotation (around Y then X)
+    x, y, z = rotate_3d_point(x, y, z, rx, ry, 0)
+    
+    # Zoom scaling
+    x *= zoom
+    y *= zoom
+    z *= zoom
+    
+    # Apply depth offset and perspective divide
+    adj_z = z + distance
+    if adj_z <= 15.0:
+        adj_z = 15.0
+    px = int(center_x + (x * f) / adj_z)
+    py = int(center_y + (y * f) / adj_z)
+    return px, py, adj_z
+
+def make_cube(size):
+    d = size / 2.0
+    vertices = np.array([
+        [-d, -d, -d], [d, -d, -d], [d, d, -d], [-d, d, -d],
+        [-d, -d, d],  [d, -d, d],  [d, d, d],  [-d, d, d]
+    ], dtype=np.float32)
+    edges = [
+        (0, 1), (1, 2), (2, 3), (3, 0),
+        (4, 5), (5, 6), (6, 7), (7, 4),
+        (0, 4), (1, 5), (2, 6), (3, 7)
+    ]
+    faces = [
+        [0, 1, 2, 3],
+        [4, 5, 6, 7],
+        [0, 1, 5, 4],
+        [2, 3, 7, 6],
+        [0, 3, 7, 4],
+        [1, 2, 6, 5]
+    ]
+    return vertices, edges, faces
+
+def make_pyramid(size):
+    d = size / 2.0
+    h_offset = d * 1.4
+    vertices = np.array([
+        [-d, d, -d], [d, d, -d], [d, d, d], [-d, d, d],
+        [0, -h_offset, 0]
+    ], dtype=np.float32)
+    edges = [
+        (0, 1), (1, 2), (2, 3), (3, 0),
+        (0, 4), (1, 4), (2, 4), (3, 4)
+    ]
+    faces = [
+        [0, 1, 2, 3],
+        [0, 1, 4],
+        [1, 2, 4],
+        [2, 3, 4],
+        [3, 0, 4]
+    ]
+    return vertices, edges, faces
+
+def make_cylinder(radius, height, segments=12):
+    vertices = []
+    edges = []
+    faces = []
+    h_half = height / 2.0
+    for i in range(segments):
+        theta = i * 2.0 * math.pi / segments
+        cx = radius * math.cos(theta)
+        cz = radius * math.sin(theta)
+        vertices.append([cx, -h_half, cz])
+        vertices.append([cx, h_half, cz])
+        
+    vertices = np.array(vertices, dtype=np.float32)
+    for i in range(segments):
+        next_i = (i + 1) % segments
+        edges.append((i * 2, next_i * 2))
+        edges.append((i * 2 + 1, next_i * 2 + 1))
+        edges.append((i * 2, i * 2 + 1))
+        faces.append([i * 2, next_i * 2, next_i * 2 + 1, i * 2 + 1])
+        
+    faces.append([i * 2 for i in range(segments)])
+    faces.append([i * 2 + 1 for i in range(segments)])
+    return vertices, edges, faces
+
+def make_extruded_prism_from_canvas(canvas_bgr, depth=100.0):
+    gray = cv2.cvtColor(canvas_bgr, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+        
+    all_vertices = []
+    all_edges = []
+    all_faces = []
+    current_idx_offset = 0
+    
+    for contour in contours:
+        peri = cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, 0.006 * peri, True)
+        if len(approx) < 3:
+            continue
+            
+        pts_2d = approx.reshape(-1, 2)
+        n_pts = len(pts_2d)
+        
+        m = cv2.moments(contour)
+        if m["m00"] != 0:
+            cx = int(m["m10"] / m["m00"])
+            cy = int(m["m01"] / m["m00"])
+        else:
+            cx, cy = np.mean(pts_2d, axis=0)
+            
+        max_dim = max(1, np.max(pts_2d) - np.min(pts_2d))
+        scale = 180.0 / max_dim
+        
+        for pt in pts_2d:
+            vx_f = (pt[0] - cx) * scale
+            vy_f = (pt[1] - cy) * scale
+            vz_f = -depth / 2.0
+            all_vertices.append([vx_f, vy_f, vz_f])
+            
+            vx_b = (pt[0] - cx) * scale
+            vy_b = (pt[1] - cy) * scale
+            vz_b = depth / 2.0
+            all_vertices.append([vx_b, vy_b, vz_b])
+            
+        for i in range(n_pts):
+            next_i = (i + 1) % n_pts
+            all_edges.append((current_idx_offset + i * 2, current_idx_offset + next_i * 2))
+            all_edges.append((current_idx_offset + i * 2 + 1, current_idx_offset + next_i * 2 + 1))
+            all_edges.append((current_idx_offset + i * 2, current_idx_offset + i * 2 + 1))
+            all_faces.append([
+                current_idx_offset + i * 2,
+                current_idx_offset + next_i * 2,
+                current_idx_offset + next_i * 2 + 1,
+                current_idx_offset + i * 2 + 1
+            ])
+            
+        all_faces.append([current_idx_offset + i * 2 for i in range(n_pts)])
+        all_faces.append([current_idx_offset + i * 2 + 1 for i in range(n_pts)])
+        current_idx_offset += n_pts * 2
+        
+    if not all_vertices:
+        return None
+    return np.array(all_vertices, dtype=np.float32), all_edges, all_faces
+
 def main():
     def generate_palette():
         # Curated 14 modern colors (BGR)
@@ -151,6 +313,11 @@ def main():
     current_draw_tool = 'NEON'
     ui_hover_target = None
     ui_hover_frames = 0
+    ui_hover_missed_frames = 0
+    HOVER_TRIGGER_FRAMES = 8
+    last_triggered_target = None
+    exit_zone_triggered = False
+    menu_cooldown_frames = 0
     
     mode_enter_frame = 0
     prev_rendered_mode = 'MAIN_MENU'
@@ -159,44 +326,55 @@ def main():
     glow_particles = []
     shatter_particles = []
     
+    # ── 3D Sculptor State Variables ──
+    angle_x = -15.0
+    angle_y = 45.0
+    zoom_level = 1.0
+    draw_points_3d = []
+    current_stroke_3d = []
+    placed_primitives_3d = []
+    selected_primitive_type = 'CUBE'
+    last_drag_pos = None
+    extruded_prism = None
+    
     selected_topic_global = None
     selected_topic_hand = None
     
     
-class OneEuroFilter:
-    def __init__(self, min_cutoff=0.1, beta=0.007):
-        self.min_cutoff = min_cutoff
-        self.beta = beta
-        self.x_prev = None
-        self.dx_prev = 0.0
-        
-    def filter(self, x, dt=0.033):
-        if self.x_prev is None:
-            self.x_prev = x
-            return x
-        dx = (x - self.x_prev) / dt
-        edx = self.dx_prev + 0.1 * (dx - self.dx_prev)
-        self.dx_prev = edx
-        cutoff = self.min_cutoff + self.beta * abs(edx)
-        alpha = 1.0 / (1.0 + (1.0 / (2.0 * math.pi * cutoff * dt)))
-        x_hat = self.x_prev + alpha * (x - self.x_prev)
-        self.x_prev = x_hat
-        return x_hat
+    class OneEuroFilter:
+        def __init__(self, min_cutoff=0.1, beta=0.007):
+            self.min_cutoff = min_cutoff
+            self.beta = beta
+            self.x_prev = None
+            self.dx_prev = 0.0
+            
+        def filter(self, x, dt=0.033):
+            if self.x_prev is None:
+                self.x_prev = x
+                return x
+            dx = (x - self.x_prev) / dt
+            edx = self.dx_prev + 0.1 * (dx - self.dx_prev)
+            self.dx_prev = edx
+            cutoff = self.min_cutoff + self.beta * abs(edx)
+            alpha = 1.0 / (1.0 + (1.0 / (2.0 * math.pi * cutoff * dt)))
+            x_hat = self.x_prev + alpha * (x - self.x_prev)
+            self.x_prev = x_hat
+            return x_hat
 
-euro_filters = {}
+    euro_filters = {}
 
-def draw_smooth_curve(img, p1, p2, color, thickness):
-    # Quadratic Bezier Curve interpolation between previous & current point
-    mx, my = (p1[0] + p2[0]) // 2, (p1[1] + p2[1]) // 2
-    steps = max(2, int(math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 3))
-    prev_pt = p1
-    for t in range(1, steps + 1):
-        u = t / steps
-        # Quadratic interpolation
-        cx = int((1 - u)**2 * p1[0] + 2 * (1 - u) * u * mx + u**2 * p2[0])
-        cy = int((1 - u)**2 * p1[1] + 2 * (1 - u) * u * my + u**2 * p2[1])
-        cv2.line(img, prev_pt, (cx, cy), color, thickness, cv2.LINE_AA)
-        prev_pt = (cx, cy)
+    def draw_smooth_curve(img, p1, p2, color, thickness):
+        # Quadratic Bezier Curve interpolation between previous & current point
+        mx, my = (p1[0] + p2[0]) // 2, (p1[1] + p2[1]) // 2
+        steps = max(2, int(math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 3))
+        prev_pt = p1
+        for t in range(1, steps + 1):
+            u = t / steps
+            # Quadratic interpolation
+            cx = int((1 - u)**2 * p1[0] + 2 * (1 - u) * u * mx + u**2 * p2[0])
+            cy = int((1 - u)**2 * p1[1] + 2 * (1 - u) * u * my + u**2 * p2[1])
+            cv2.line(img, prev_pt, (cx, cy), color, thickness, cv2.LINE_AA)
+            prev_pt = (cx, cy)
 
     class SmoothLM:
         def __init__(self, x, y, z):
@@ -279,6 +457,15 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
     news_mapping_right = { 'T': 'Thumb: AI news', 'I': 'Index: Geo political', 'M': 'Middle: India news', 'R': 'Ring: Indian frauds', 'P': 'Pinky: AI & Startups' }
     news_mapping_left = { 'T': 'Thumb: India budget', 'I': 'Index: MNC Jobs', 'M': 'Middle: Claude AI', 'R': 'Ring: Weather/AQI', 'P': 'Pinky: Mobile Tech' }
 
+    # ── Initialize Session Debug Log ──
+    log_file_path = "session_debug.log"
+    log_buffer = []
+    try:
+        with open(log_file_path, "w") as f:
+            f.write(f"--- Session started at {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+    except Exception as e:
+        print(f"Warning: could not initialize log file: {e}")
+
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Camera index 0 not available, trying index 1...")
@@ -328,6 +515,9 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
             
             try: landmarker.detect_async(mp_image, current_timestamp_ms)
             except Exception as e: pass
+            
+            is_drawing = False
+            is_dragging_cam = False
                 
             results = shared_state['results']
             
@@ -399,47 +589,73 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                         tip = hand_landmarks[tip_ids[id]]
                         pip = hand_landmarks[tip_ids[id] - 2]
                         mcp = hand_landmarks[tip_ids[id] - 3]
+                        # Robust finger extension: tip must be further from wrist than pip
+                        d_tip_wrist = math.sqrt((tip.x - wrist.x)**2 + (tip.y - wrist.y)**2 + (tip.z - wrist.z)**2)
+                        d_pip_wrist = math.sqrt((pip.x - wrist.x)**2 + (pip.y - wrist.y)**2 + (pip.z - wrist.z)**2)
+                        # Also check dot product: MCP→PIP and PIP→TIP should point same direction
                         v1x, v1y, v1z = pip.x - mcp.x, pip.y - mcp.y, pip.z - mcp.z
                         v2x, v2y, v2z = tip.x - pip.x, tip.y - pip.y, tip.z - pip.z
-                        if (v1x*v2x + v1y*v2y + v1z*v2z) > 0:
+                        dot = v1x*v2x + v1y*v2y + v1z*v2z
+                        if d_tip_wrist > d_pip_wrist and dot > 0:
                             active_fingers_texts.append(finger_names[id])
                             hand_fingers.append(finger_names[id])
                             
 
                             
                     if app_mode == 'MAIN_MENU':
-                        if len(hand_fingers) == 1:
-                            if menu_selection_choice == 'NEWS_MENU':
-                                menu_selection_frames += 1
-                                if menu_selection_frames >= 15:
-                                    app_mode = 'NEWS_MENU'
-                                    menu_selection_frames = 0
-                            else:
-                                menu_selection_choice = 'NEWS_MENU'
-                                menu_selection_frames = 1
-                        elif len(hand_fingers) == 2:
-                            if menu_selection_choice == 'DRAW_MODE':
-                                menu_selection_frames += 1
-                                if menu_selection_frames >= 15:
-                                    app_mode = 'DRAW_MODE'
-                                    menu_selection_frames = 0
-                                    if len(layers) == 0:
-                                        layers.append({'name': 'Layer 1', 'canvas': np.zeros_like(image), 'visible': True})
-                                        active_layer_idx = 0
-                            else:
-                                menu_selection_choice = 'DRAW_MODE'
-                                menu_selection_frames = 1
-                        else:
+                        if menu_cooldown_frames > 0:
+                            menu_cooldown_frames -= 1
                             menu_selection_frames = 0
+                        else:
+                            non_thumb = [f for f in hand_fingers if f != 'T']
+                            n = len(non_thumb)
+                            if n == 1:
+                                if menu_selection_choice == 'NEWS_MENU':
+                                    menu_selection_frames += 1
+                                    if menu_selection_frames >= 15:
+                                        app_mode = 'NEWS_MENU'
+                                        menu_selection_frames = 0
+                                else:
+                                    menu_selection_choice = 'NEWS_MENU'
+                                    menu_selection_frames = 1
+                            elif n == 2:
+                                if menu_selection_choice == 'DRAW_MODE':
+                                    menu_selection_frames += 1
+                                    if menu_selection_frames >= 15:
+                                        app_mode = 'DRAW_MODE'
+                                        menu_selection_frames = 0
+                                        if len(layers) == 0:
+                                            layers.append({'name': 'Layer 1', 'canvas': np.zeros_like(image), 'visible': True})
+                                            active_layer_idx = 0
+                                else:
+                                    menu_selection_choice = 'DRAW_MODE'
+                                    menu_selection_frames = 1
+                            elif n == 3:
+                                if menu_selection_choice == '3D_MODE':
+                                    menu_selection_frames += 1
+                                    if menu_selection_frames >= 15:
+                                        app_mode = '3D_MODE'
+                                        menu_selection_frames = 0
+                                        # Auto-extrude the active canvas drawing if it exists
+                                        if len(layers) > 0 and active_layer_idx < len(layers):
+                                            extruded_prism = make_extruded_prism_from_canvas(layers[active_layer_idx]['canvas'])
+                                else:
+                                    menu_selection_choice = '3D_MODE'
+                                    menu_selection_frames = 1
+                            else:
+                                menu_selection_frames = 0
                             
                     elif app_mode == 'NEWS_MENU':
-                        hx, hy = int(hand_landmarks[8].x * w), int(hand_landmarks[8].y * h)
-                        if 20 < hx < 120 and 20 < hy < 60:
-                            exit_frames += 1
-                            if exit_frames > 20:
+                        hx, hy = int(raw_lm_list[8].x * w), int(raw_lm_list[8].y * h)
+                        if 0 <= hx <= 140 and 0 <= hy <= 65:
+                            if not exit_zone_triggered:
                                 app_mode = 'MAIN_MENU'
-                                exit_frames = 0
-                        else: exit_frames = 0
+                                menu_cooldown_frames = 25
+                                exit_zone_triggered = True
+                            exit_frames = 20
+                        else:
+                            exit_frames = 0
+                            exit_zone_triggered = False
                             
                         if handedness_label == 'Left':
                             for finger in hand_fingers:
@@ -458,14 +674,14 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                                 hover_frames = 1
                                 last_hovered_topic = current_hover_topic
                                 
-                            if hover_frames >= 10:
+                            if hover_frames >= 6:
                                 selected_topic_global = current_hover_topic
                                 selected_topic_hand = handedness_label
                         else: hover_frames = 0
                                 
                         if selected_topic_global and len(hand_fingers) == 0 and handedness_label == selected_topic_hand:
                             punch_frames += 1
-                            if punch_frames >= 10:
+                            if punch_frames >= 6:
                                 app_mode = 'CONTENT_MODE'
                                 article_frame_count = 0
                                 update_display_image()
@@ -474,16 +690,19 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                         elif len(hand_fingers) > 0: punch_frames = 0
                             
                     elif app_mode == 'CONTENT_MODE':
-                        hx, hy = int(hand_landmarks[8].x * w), int(hand_landmarks[8].y * h)
-                        if 20 < hx < 120 and 20 < hy < 60:
-                            exit_frames += 1
-                            if exit_frames > 20:
+                        hx, hy = int(raw_lm_list[8].x * w), int(raw_lm_list[8].y * h)
+                        if 0 <= hx <= 140 and 0 <= hy <= 65:
+                            if not exit_zone_triggered:
                                 app_mode = 'MAIN_MENU'
                                 selected_topic_global = None
                                 selected_topic_hand = None
-                                exit_frames = 0
-                                hover_frames = 0
-                        else: exit_frames = 0
+                                menu_cooldown_frames = 25
+                                exit_zone_triggered = True
+                            exit_frames = 20
+                            hover_frames = 0
+                        else:
+                            exit_frames = 0
+                            exit_zone_triggered = False
                             
                         current_wrist_x = hand_landmarks[0].x
                         if swipe_cooldown_frames > 0:
@@ -623,9 +842,8 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                         sw_x_start = w - n_show * sw_gap - 20
                         for si in range(n_show):
                             sx = sw_x_start + si * sw_gap + 12
-                            sy = 28  # bar_y=0 + bar_h//2
                             ci, ri = si // 7, si % 7
-                            hover_targets.append({'name': f'COLOR_{ci}_{ri}', 'box': (sx-14, 8, sx+14, 48), 'color': swatch_colors_flat[si % len(swatch_colors_flat)]})
+                            hover_targets.append({'name': f'COLOR_{ci}_{ri}', 'box': (sx-18, 0, sx+18, 56), 'color': swatch_colors_flat[si % len(swatch_colors_flat)]})
 
                         # ── Tool icons in top bar ──
                         tool_list = ['PEN', 'MARKER', 'NEON', 'AURORA', 'CALLIGRAPHY', 'SPRAY', 'ERASER']
@@ -633,50 +851,66 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                         t_start = w//2 - t_total//2
                         for ti, tool in enumerate(tool_list):
                             tx = t_start + ti * 46 + 23
-                            hover_targets.append({'name': tool, 'box': (tx-22, 4, tx+22, 52)})
+                            hover_targets.append({'name': tool, 'box': (tx-25, 0, tx+25, 60)})
 
-                        # ── Back button ──
-                        hover_targets.append({'name': 'ACTION_BACK', 'box': (18, 14, 94, 42)})
+                        # ── Back button (generous top-left zone) ──
+                        hover_targets.append({'name': 'ACTION_BACK', 'box': (0, 0, 120, 60)})
 
                         # ── Bottom-left HUD (fingers) ──
                         hud_x, hud_y = 18, h - 78
-                        hover_targets.append({'name': 'ACTION_FINGERS_MINUS', 'box': (hud_x+8,  hud_y+30, hud_x+38,  hud_y+52)})
-                        hover_targets.append({'name': 'ACTION_FINGERS_PLUS',  'box': (hud_x+142, hud_y+30, hud_x+172, hud_y+52)})
-                        hover_targets.append({'name': 'ACTION_MIRROR',        'box': (hud_x+110, hud_y+4,  hud_x+178, hud_y+26)})
-                        hover_targets.append({'name': 'ACTION_GRID',          'box': (hud_x+44,  hud_y+30, hud_x+136, hud_y+52)})
+                        hover_targets.append({'name': 'ACTION_FINGERS_MINUS', 'box': (hud_x,  hud_y+20, hud_x+45,  hud_y+60)})
+                        hover_targets.append({'name': 'ACTION_FINGERS_PLUS',  'box': (hud_x+135, hud_y+20, hud_x+180, hud_y+60)})
+                        hover_targets.append({'name': 'ACTION_MIRROR',        'box': (hud_x+100, hud_y-5,  hud_x+185, hud_y+30)})
+                        hover_targets.append({'name': 'ACTION_GRID',          'box': (hud_x+38,  hud_y+20, hud_x+140, hud_y+60)})
 
                         # ── Bottom-right HUD (undo/clear/save) ──
                         br_x, br_y = w - 178, h - 78
                         for bi, bname in enumerate(['ACTION_UNDO', 'ACTION_CLEAR', 'ACTION_SAVE']):
-                            bbx = br_x + 8 + bi * 52
-                            hover_targets.append({'name': bname, 'box': (bbx, br_y+8, bbx+46, br_y+52)})
+                            bbx = br_x + bi * 56
+                            hover_targets.append({'name': bname, 'box': (bbx, br_y, bbx+54, br_y+60)})
                         
+                        # Check UI targets collision FIRST
                         hovering_ui = False
                         current_target = None
-                        
-                        # First determine drawing state, THEN check UI overlap
-                        n = len(hand_fingers)
+                        for t in hover_targets:
+                            x1, y1, x2, y2 = t['box']
+                            if cx >= x1 and cx <= x2 and cy >= y1 and cy <= y2:
+                                current_target = t['name']
+                                hovering_ui = True
+                                break
+                                
                         is_drawing = False
                         is_hovering = False
-                        if required_draw_fingers == 5:  # PEN mode
-                            if 'M' not in hand_fingers: is_drawing = True
-                            else: is_hovering = True
-                        else:
-                            if n == required_draw_fingers: is_drawing = True
-                            elif n > 0 and n != required_draw_fingers: is_hovering = True
+                        index_up = 'I' in hand_fingers
+                        middle_up = 'M' in hand_fingers
+                        ring_up = 'R' in hand_fingers
+                        pinky_up = 'P' in hand_fingers
                         
-                        # Only check UI hover targets when NOT actively drawing
-                        if not is_drawing:
-                            for t in hover_targets:
-                                x1, y1, x2, y2 = t['box']
-                                if cx >= x1 and cx <= x2 and cy >= y1 and cy <= y2:
-                                    current_target = t['name']
-                                    hovering_ui = True
-                                    break
+                        # UI Safety Margin: disable drawing whenever finger is in top/bottom UI bar zones
+                        in_ui_margin = (cy < 65) or (cy > h - 85) or (cx < 140 and cy < 80)
+                        
+                        if hovering_ui or in_ui_margin:
+                            is_hovering = True
+                            is_drawing = False
+                        else:
+                            if required_draw_fingers == 5:  # PEN mode
+                                if not middle_up: is_drawing = True
+                            elif required_draw_fingers == 1:
+                                if index_up: is_drawing = True  # Pointing at canvas = draw!
+                            else:
+                                non_thumb = [f for f in hand_fingers if f != 'T']
+                                if len(non_thumb) == required_draw_fingers: is_drawing = True
                                     
-                        if current_target == ui_hover_target and current_target is not None:
-                            ui_hover_frames += 1
-                            if ui_hover_frames >= 20: # 1 second click
+                        if current_target is not None:
+                            if current_target == ui_hover_target:
+                                ui_hover_frames += 1
+                                ui_hover_missed_frames = 0
+                            else:
+                                ui_hover_target = current_target
+                                ui_hover_frames = 1
+                                ui_hover_missed_frames = 0
+                                
+                            if ui_hover_frames >= HOVER_TRIGGER_FRAMES:
                                 if current_target.startswith('COLOR_'):
                                     parts = current_target.split('_')
                                     current_draw_color = color_palette[int(parts[1])][int(parts[2])]
@@ -713,9 +947,8 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                                     grid_mode = not grid_mode
                                 elif current_target == 'ACTION_BACK':
                                     app_mode = 'MAIN_MENU'
+                                    menu_cooldown_frames = 25
                                     prev_draw_x, prev_draw_y = 0, 0
-                                    ui_hover_frames = 0
-                                    ui_hover_target = None
                                 elif current_target == 'ACTION_SAVE':
                                     export_img = np.full_like(image, 255)
                                     for ld in layers:
@@ -742,9 +975,15 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                                 else:
                                     current_draw_tool = current_target
                                 ui_hover_frames = 0
+                                ui_hover_target = None
                         else:
-                            ui_hover_target = current_target
-                            ui_hover_frames = 1 if current_target else 0
+                            if ui_hover_target is not None:
+                                ui_hover_missed_frames += 1
+                                if ui_hover_missed_frames > 4:
+                                    ui_hover_target = None
+                                    ui_hover_frames = 0
+                            else:
+                                ui_hover_frames = 0
                             
 
                         if is_drawing:
@@ -790,8 +1029,9 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                                                     current_strokes = [[] for _ in range(4)]
                                                     stroke_hold_frames = 0
                                                     
-                                    if px != 0 and py != 0 and canvas is not None and len(current_strokes[fi]) > 0:
-                                        dist_step = math.hypot(fx - px, fy - py)
+                                    # Actually draw the stroke
+                                    dist_step = math.hypot(fx - px, fy - py)
+                                    if dist_step < 200:  # skip teleport jumps
                                         speed_factor = max(0.5, min(1.8, 15.0 / (dist_step + 1.0)))
                                         
                                         if current_draw_tool == 'PEN':
@@ -862,32 +1102,184 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                                             t = max(5, int(40 * depth_mult))
                                             cv2.line(canvas, (px, py), (fx, fy), (0, 0, 0), t, cv2.LINE_AA)
                                 prev_draw_pos[fi] = (fx, fy)
-                        elif is_hovering:
-                            prev_draw_pos = [(0, 0) for _ in range(4)]
-                            was_drawing = False
-                            current_strokes = [[] for _ in range(4)]
-                            stroke_hold_frames = 0
-                            # Spawn glow particles on hover
-                            for _ in range(3):
-                                glow_particles.append({
-                                    'x': cx + random.randint(-10, 10),
-                                    'y': cy + random.randint(-10, 10),
-                                    'vx': random.uniform(-1.5, 1.5),
-                                    'vy': random.uniform(-2.5, -0.5),
-                                    'life': random.randint(10, 20),
-                                    'color': current_draw_color
-                                })
                         else:
+                            # Only reset after several non-drawing frames (debounce)
+                            if was_drawing:
+                                was_drawing = False
                             prev_draw_pos = [(0, 0) for _ in range(4)]
-                            was_drawing = False
                             current_strokes = [[] for _ in range(4)]
                             stroke_hold_frames = 0
+                            
+                    elif app_mode == '3D_MODE':
+                        cx, cy = int(raw_lm_list[8].x * w), int(raw_lm_list[8].y * h)
+                        hover_targets = []
+                        # Back button (generous top-left zone)
+                        hover_targets.append({'name': 'ACTION_BACK', 'box': (0, 0, 120, 60)})
+                        
+                        # Top toolbar: Reset Camera, Clear, Extrude
+                        tb_w = 3 * 120
+                        tb_x = w // 2 - tb_w // 2
+                        hover_targets.append({'name': 'ACTION_3D_RESET_CAM', 'box': (tb_x - 10, 0, tb_x + 110, 56)})
+                        hover_targets.append({'name': 'ACTION_3D_CLEAR', 'box': (tb_x + 110, 0, tb_x + 230, 56)})
+                        hover_targets.append({'name': 'ACTION_3D_EXTRUDE', 'box': (tb_x + 230, 0, tb_x + 350, 56)})
+                        
+                        # Primitives Selection (generous side panel)
+                        hover_targets.append({'name': 'SELECT_3D_CUBE', 'box': (0, 90, 140, 148)})
+                        hover_targets.append({'name': 'SELECT_3D_PYRAMID', 'box': (0, 148, 140, 198)})
+                        hover_targets.append({'name': 'SELECT_3D_CYLINDER', 'box': (0, 198, 140, 248)})
+                        hover_targets.append({'name': 'ACTION_3D_ADD_SHAPE', 'box': (0, 255, 140, 310)})
+                        
+                        hovering_ui = False
+                        current_target = None
+                        
+                        # Check UI targets collision FIRST
+                        hovering_ui = False
+                        current_target = None
+                        for t in hover_targets:
+                            x1, y1, x2, y2 = t['box']
+                            if cx >= x1 and cx <= x2 and cy >= y1 and cy <= y2:
+                                current_target = t['name']
+                                hovering_ui = True
+                                break
+                                
+                        is_drawing = False
+                        is_dragging_cam = False
+                        is_hovering = False
+                        
+                        # UI Safety Margin: disable drawing whenever finger is in top bar (cy < 75) or left panel (cx < 160)
+                        in_ui_margin = (cy < 75) or (cx < 160)
+                        
+                        if hovering_ui or in_ui_margin:
+                            is_hovering = True
+                            is_drawing = False
+                            current_stroke_3d = []
+                            was_drawing = False
+                        else:
+                            non_thumb = [f for f in hand_fingers if f != 'T']
+                            index_up = 'I' in hand_fingers
+                            
+                            if len(non_thumb) == 0:
+                                is_dragging_cam = True # Fist = Rotate 3D Camera!
+                            elif index_up:
+                                is_drawing = True     # Pointing at 3D canvas = Draw 3D Path!
+                                    
+                        if current_target is not None:
+                            if current_target == ui_hover_target:
+                                ui_hover_frames += 1
+                                ui_hover_missed_frames = 0
+                            else:
+                                ui_hover_target = current_target
+                                ui_hover_frames = 1
+                                ui_hover_missed_frames = 0
+                                
+                            if ui_hover_frames >= HOVER_TRIGGER_FRAMES:
+                                if current_target == 'ACTION_BACK':
+                                    app_mode = 'MAIN_MENU'
+                                    menu_cooldown_frames = 25
+                                elif current_target == 'ACTION_3D_RESET_CAM':
+                                    angle_x = -15.0
+                                    angle_y = 45.0
+                                    zoom_level = 1.0
+                                elif current_target == 'ACTION_3D_CLEAR':
+                                    draw_points_3d = []
+                                    placed_primitives_3d = []
+                                    extruded_prism = None
+                                elif current_target == 'ACTION_3D_EXTRUDE':
+                                    if len(layers) > 0 and active_layer_idx < len(layers):
+                                        extruded_prism = make_extruded_prism_from_canvas(layers[active_layer_idx]['canvas'])
+                                elif current_target == 'SELECT_3D_CUBE':
+                                    selected_primitive_type = 'CUBE'
+                                elif current_target == 'SELECT_3D_PYRAMID':
+                                    selected_primitive_type = 'PYRAMID'
+                                elif current_target == 'SELECT_3D_CYLINDER':
+                                    selected_primitive_type = 'CYLINDER'
+                                elif current_target == 'ACTION_3D_ADD_SHAPE':
+                                    # Add shape in front of camera
+                                    z_cam = 0.0
+                                    D = 600.0
+                                    x_cam = (cx - w//2) * D / 550.0
+                                    y_cam = (cy - h//2) * D / 550.0
+                                    
+                                    rad_x = math.radians(-angle_x)
+                                    cos_x, sin_x = math.cos(rad_x), math.sin(rad_x)
+                                    y1 = y_cam * cos_x
+                                    z1 = y_cam * sin_x
+                                    
+                                    rad_y = math.radians(-angle_y)
+                                    cos_y, sin_y = math.cos(rad_y), math.sin(rad_y)
+                                    x_w = x_cam * cos_y + z1 * sin_y
+                                    z_w = -x_cam * sin_y + z1 * cos_y
+                                    
+                                    placed_primitives_3d.append({
+                                        'type': selected_primitive_type,
+                                        'pos': (x_w, y1, z_w),
+                                        'size': 75.0,
+                                        'color': current_draw_color,
+                                        'rot': [0.0, 0.0, 0.0]
+                                    })
+                                ui_hover_frames = 0
+                                ui_hover_target = None
+                        else:
+                            if ui_hover_target is not None:
+                                ui_hover_missed_frames += 1
+                                if ui_hover_missed_frames > 4:
+                                    ui_hover_target = None
+                                    ui_hover_frames = 0
+                            else:
+                                ui_hover_frames = 0
+                            
+                        if is_dragging_cam:
+                            if last_drag_pos is not None:
+                                dx = cx - last_drag_pos[0]
+                                dy = cy - last_drag_pos[1]
+                                angle_y += dx * 0.45
+                                angle_x = max(-80.0, min(80.0, angle_x + dy * 0.45))
+                            last_drag_pos = (cx, cy)
+                            current_stroke_3d = []
+                            was_drawing = False
+                        elif is_drawing:
+                            if not was_drawing:
+                                current_stroke_3d = []
+                            was_drawing = True
+                            last_drag_pos = None
+                            
+                            z_cam = raw_lm_list[8].z * 600.0
+                            D = 600.0 + z_cam
+                            x_cam = (cx - w//2) * D / (550.0 * zoom_level)
+                            y_cam = (cy - h//2) * D / (550.0 * zoom_level)
+                            
+                            rad_x = math.radians(-angle_x)
+                            cos_x, sin_x = math.cos(rad_x), math.sin(rad_x)
+                            y1 = y_cam * cos_x - z_cam * sin_x
+                            z1 = y_cam * sin_x + z_cam * cos_x
+                            
+                            rad_y = math.radians(-angle_y)
+                            cos_y, sin_y = math.cos(rad_y), math.sin(rad_y)
+                            x_w = x_cam * cos_y + z1 * sin_y
+                            z_w = -x_cam * sin_y + z1 * cos_y
+                            
+                            if not current_stroke_3d or math.hypot(x_w - current_stroke_3d[-1][0], y1 - current_stroke_3d[-1][1]) > 4.0:
+                                current_stroke_3d.append((x_w, y1, z_w))
+                        else:
+                            if was_drawing and len(current_stroke_3d) > 1:
+                                draw_points_3d.append({
+                                    'points': current_stroke_3d,
+                                    'color': current_draw_color,
+                                    'tool': current_draw_tool
+                                })
+                            current_stroke_3d = []
+                            was_drawing = False
+                            last_drag_pos = None
 
             if not results or not results.hand_landmarks:
                 hand_ema.clear()
                 if app_mode == 'DRAW_MODE':
                     prev_draw_x, prev_draw_y = 0, 0
             else:
+                if random.random() < 0.05:
+                    cx_val = cx if 'cx' in locals() else None
+                    cy_val = cy if 'cy' in locals() else None
+                    print(f"[DEBUG] Mode: {app_mode} | Fingers: {hand_fingers} | Draw: {is_drawing} | DragCam: {is_dragging_cam} | Cursor: ({cx_val}, {cy_val}) | Hover UI: {current_target if 'current_target' in locals() else None}")
                 for h_label in list(hand_ema.keys()):
                     if h_label not in active_handedness:
                         del hand_ema[h_label]
@@ -922,46 +1314,62 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                 sc = (int(100*at), int(100*at), int(120*at))
                 cv2.putText(image, "gesture-controlled reading & drawing", (mx - 182, ty + 38), cv2.FONT_HERSHEY_SIMPLEX, 0.42, sc, 1, cv2.LINE_AA)
                 
-                # Mode selection cards
-                cw, ch = 220, 170
-                gap = 40
+                # Mode selection cards (3-card symmetrical layout)
+                cw, ch = 190, 170
+                gap = 35
                 
-                # News Card (rises from below)
+                # News Card
                 c1_slide = int((1 - at) * 180)
-                c1x = mx - cw - gap//2
+                c1x = mx - int(1.5 * cw) - gap
                 c1y = my - 20 + c1_slide
                 news_sel = menu_selection_choice == 'NEWS_MENU'
                 nb = (120, 90, 255) if news_sel else (55, 55, 70)
                 draw_glass_panel(image, (c1x, c1y), (c1x+cw, c1y+ch), radius=18, alpha=0.75, bg_color=(28,28,36), border_color=nb)
                 nc_hi = (int(240*at), int(240*at), int(248*at))
                 nc_lo = (int(100*at), int(100*at), int(115*at))
-                cv2.putText(image, "NEWS", (c1x+70, c1y+60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, nc_hi, 1+int(news_sel), cv2.LINE_AA)
-                cv2.putText(image, "1 finger", (c1x+68, c1y+90), cv2.FONT_HERSHEY_SIMPLEX, 0.42, nc_lo, 1, cv2.LINE_AA)
-                cv2.putText(image, "hold to select", (c1x+45, c1y+120), cv2.FONT_HERSHEY_SIMPLEX, 0.36, nc_lo, 1, cv2.LINE_AA)
+                cv2.putText(image, "NEWS", (c1x+55, c1y+60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, nc_hi, 1+int(news_sel), cv2.LINE_AA)
+                cv2.putText(image, "1 finger", (c1x+53, c1y+90), cv2.FONT_HERSHEY_SIMPLEX, 0.42, nc_lo, 1, cv2.LINE_AA)
+                cv2.putText(image, "hold to select", (c1x+30, c1y+120), cv2.FONT_HERSHEY_SIMPLEX, 0.36, nc_lo, 1, cv2.LINE_AA)
                 
-                # Draw Card (rises with stagger)
+                # Draw Card
                 c2_at = ease_out_cubic(min(max(0, mode_enter_frame - 4) / 20.0, 1.0))
                 c2_slide = int((1 - c2_at) * 180)
-                c2x = mx + gap//2
+                c2x = mx - int(0.5 * cw)
                 c2y = my - 20 + c2_slide
                 draw_sel = menu_selection_choice == 'DRAW_MODE'
                 db = (120, 90, 255) if draw_sel else (55, 55, 70)
                 draw_glass_panel(image, (c2x, c2y), (c2x+cw, c2y+ch), radius=18, alpha=0.75, bg_color=(28,28,36), border_color=db)
                 dc_hi = (int(240*c2_at), int(240*c2_at), int(248*c2_at))
                 dc_lo = (int(100*c2_at), int(100*c2_at), int(115*c2_at))
-                cv2.putText(image, "DRAW", (c2x+72, c2y+60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, dc_hi, 1+int(draw_sel), cv2.LINE_AA)
-                cv2.putText(image, "2 fingers", (c2x+64, c2y+90), cv2.FONT_HERSHEY_SIMPLEX, 0.42, dc_lo, 1, cv2.LINE_AA)
-                cv2.putText(image, "hold to select", (c2x+45, c2y+120), cv2.FONT_HERSHEY_SIMPLEX, 0.36, dc_lo, 1, cv2.LINE_AA)
+                cv2.putText(image, "DRAW", (c2x+58, c2y+60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, dc_hi, 1+int(draw_sel), cv2.LINE_AA)
+                cv2.putText(image, "2 fingers", (c2x+50, c2y+90), cv2.FONT_HERSHEY_SIMPLEX, 0.42, dc_lo, 1, cv2.LINE_AA)
+                cv2.putText(image, "hold to select", (c2x+30, c2y+120), cv2.FONT_HERSHEY_SIMPLEX, 0.36, dc_lo, 1, cv2.LINE_AA)
                 
-                # Selection highlight fade-in (replaces flat bar/ring)
+                # 3D Sculptor Card
+                c3_at = ease_out_cubic(min(max(0, mode_enter_frame - 8) / 20.0, 1.0))
+                c3_slide = int((1 - c3_at) * 180)
+                c3x = mx + int(0.5 * cw) + gap
+                c3y = my - 20 + c3_slide
+                sculpt_sel = menu_selection_choice == '3D_MODE'
+                sb = (120, 90, 255) if sculpt_sel else (55, 55, 70)
+                draw_glass_panel(image, (c3x, c3y), (c3x+cw, c3y+ch), radius=18, alpha=0.75, bg_color=(28,28,36), border_color=sb)
+                sc_hi = (int(240*c3_at), int(240*c3_at), int(248*c3_at))
+                sc_lo = (int(100*c3_at), int(100*c3_at), int(115*c3_at))
+                cv2.putText(image, "3D ART", (c3x+54, c3y+60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, sc_hi, 1+int(sculpt_sel), cv2.LINE_AA)
+                cv2.putText(image, "3 fingers", (c3x+50, c3y+90), cv2.FONT_HERSHEY_SIMPLEX, 0.42, sc_lo, 1, cv2.LINE_AA)
+                cv2.putText(image, "hold to select", (c3x+30, c3y+120), cv2.FONT_HERSHEY_SIMPLEX, 0.36, sc_lo, 1, cv2.LINE_AA)
+                
+                # Selection highlight fade-in
                 if menu_selection_frames > 0:
                     prog = menu_selection_frames / 15.0
                     fill_c = (120, 90, 255)
                     ov_fill = image.copy()
                     if news_sel:
                         draw_rounded_rect(ov_fill, (c1x, c1y), (c1x+cw, c1y+ch), fill_c, cv2.FILLED, radius=18)
-                    else:
+                    elif draw_sel:
                         draw_rounded_rect(ov_fill, (c2x, c2y), (c2x+cw, c2y+ch), fill_c, cv2.FILLED, radius=18)
+                    elif sculpt_sel:
+                        draw_rounded_rect(ov_fill, (c3x, c3y), (c3x+cw, c3y+ch), fill_c, cv2.FILLED, radius=18)
                     cv2.addWeighted(ov_fill, 0.25 * prog, image, 1.0 - 0.25 * prog, 0, image)
 
             elif app_mode == 'NEWS_MENU':
@@ -1176,7 +1584,7 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                 draw_rounded_rect(image, (bx, by), (bx+76, by+28), (35, 35, 45), radius=6)
                 cv2.putText(image, "< BACK", (bx+8, by+19), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 175), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_BACK' and ui_hover_frames > 0:
-                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    prog = min(ui_hover_frames / HOVER_TRIGGER_FRAMES, 1.0)
                     cv2.line(image, (bx, by+27), (bx + int(76*prog), by+27), (120, 90, 255), 2, cv2.LINE_AA)
 
                 # ── Tool icons (center) ──
@@ -1193,7 +1601,7 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                     ic = (220, 220, 240) if active else (90, 90, 110)
                     cv2.putText(image, icon, (tx-5, ty_center+6), cv2.FONT_HERSHEY_SIMPLEX, 0.45, ic, 1, cv2.LINE_AA)
                     if ui_hover_target == tool and ui_hover_frames > 0:
-                        angle = int((ui_hover_frames / 20.0) * 360)
+                        angle = int((ui_hover_frames / HOVER_TRIGGER_FRAMES) * 360)
                         cv2.ellipse(image, (tx, ty_center), (20, 20), -90, 0, angle, (120, 90, 255), 1, cv2.LINE_AA)
 
                 # ── Color swatches (right side, 7 dots) ──
@@ -1213,7 +1621,7 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                         cv2.circle(image, (sx, sy), r+3, (220, 220, 240), 1, cv2.LINE_AA)
                     cn = f'COLOR_{si//7}_{si%7}'
                     if ui_hover_target == cn and ui_hover_frames > 0:
-                        angle = int((ui_hover_frames / 20.0) * 360)
+                        angle = int((ui_hover_frames / HOVER_TRIGGER_FRAMES) * 360)
                         cv2.ellipse(image, (sx, sy), (16, 16), -90, 0, angle, (255, 255, 255), 1, cv2.LINE_AA)
 
                 # ── Bottom-left HUD: fingers + mirror ──
@@ -1231,7 +1639,7 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                 draw_rounded_rect(image, (hud_x+8, hud_y+30), (hud_x+38, hud_y+52), (35, 35, 48), radius=4)
                 cv2.putText(image, "-", (hud_x+18, hud_y+46), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (120, 100, 200), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_FINGERS_MINUS' and ui_hover_frames > 0:
-                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    prog = min(ui_hover_frames / HOVER_TRIGGER_FRAMES, 1.0)
                     cv2.line(image, (hud_x+8, hud_y+51), (hud_x+8+int(30*prog), hud_y+51), (120, 90, 255), 2, cv2.LINE_AA)
 
                 grid_btn_col = (42, 42, 58) if grid_mode else (28, 28, 38)
@@ -1240,13 +1648,13 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                 grid_lbl = "GRID: ON" if grid_mode else "GRID: OFF"
                 cv2.putText(image, grid_lbl, (hud_x+54, hud_y+46), cv2.FONT_HERSHEY_SIMPLEX, 0.38, grid_txt_col, 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_GRID' and ui_hover_frames > 0:
-                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    prog = min(ui_hover_frames / HOVER_TRIGGER_FRAMES, 1.0)
                     cv2.line(image, (hud_x+44, hud_y+51), (hud_x+44+int(92*prog), hud_y+51), (120, 90, 255), 2, cv2.LINE_AA)
 
                 draw_rounded_rect(image, (hud_x+142, hud_y+30), (hud_x+172, hud_y+52), (35, 35, 48), radius=4)
                 cv2.putText(image, "+", (hud_x+150, hud_y+46), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (120, 100, 200), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_FINGERS_PLUS' and ui_hover_frames > 0:
-                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    prog = min(ui_hover_frames / HOVER_TRIGGER_FRAMES, 1.0)
                     cv2.line(image, (hud_x+142, hud_y+51), (hud_x+142+int(30*prog), hud_y+51), (120, 90, 255), 2, cv2.LINE_AA)
 
                 # Mirror dot indicator
@@ -1254,7 +1662,7 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                 cv2.circle(image, (hud_x+165, hud_y+14), 5, mir_col, cv2.FILLED, cv2.LINE_AA)
                 cv2.putText(image, "MIR", (hud_x+125, hud_y+22), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (80, 80, 100), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_MIRROR' and ui_hover_frames > 0:
-                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    prog = min(ui_hover_frames / HOVER_TRIGGER_FRAMES, 1.0)
                     cv2.ellipse(image, (hud_x+165, hud_y+14), (9, 9), -90, 0, int(360*prog), (72, 199, 142), 1, cv2.LINE_AA)
 
                 # ── Undo / Clear / Save (bottom right) ──
@@ -1275,7 +1683,7 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                     draw_rounded_rect(image, (bbx, bby), (bbx+46, bby+44), (32, 32, 42), radius=5)
                     cv2.putText(image, blbl, (bbx+5, bby+28), cv2.FONT_HERSHEY_SIMPLEX, 0.35, bcol, 1, cv2.LINE_AA)
                     if ui_hover_target == bname and ui_hover_frames > 0:
-                        prog = min(ui_hover_frames / 20.0, 1.0)
+                        prog = min(ui_hover_frames / HOVER_TRIGGER_FRAMES, 1.0)
                         cv2.line(image, (bbx, bby+43), (bbx+int(46*prog), bby+43), bcol, 2, cv2.LINE_AA)
 
                 # ── Futuristic Holographic Cyber Cursor ──
@@ -1307,6 +1715,296 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
 
                 # Rebuild hover targets to match new layout
                 btn_y_ref = 0  # unused sentinel
+
+            elif app_mode == '3D_MODE':
+                anim_t = ease_out_cubic(min(mode_enter_frame / 18.0, 1.0))
+                
+                # 1. Holographic Floor Grid (XZ plane at Y = 100)
+                grid_color = (48, 42, 60)
+                for z_val in range(-200, 201, 40):
+                    pt1 = project_point(-200, 100, z_val, angle_x, angle_y, zoom_level, w//2, h//2)
+                    pt2 = project_point(200, 100, z_val, angle_x, angle_y, zoom_level, w//2, h//2)
+                    cv2.line(image, (pt1[0], pt1[1]), (pt2[0], pt2[1]), grid_color, 1, cv2.LINE_AA)
+                for x_val in range(-200, 201, 40):
+                    pt1 = project_point(x_val, 100, -200, angle_x, angle_y, zoom_level, w//2, h//2)
+                    pt2 = project_point(x_val, 100, 200, angle_x, angle_y, zoom_level, w//2, h//2)
+                    cv2.line(image, (pt1[0], pt1[1]), (pt2[0], pt2[1]), grid_color, 1, cv2.LINE_AA)
+                    
+                # 2. Glowing Coordinate Axes at Grid Center
+                orig = project_point(0, 100, 0, angle_x, angle_y, zoom_level, w//2, h//2)
+                ax_x = project_point(80, 100, 0, angle_x, angle_y, zoom_level, w//2, h//2)
+                ax_y = project_point(0, 20, 0, angle_x, angle_y, zoom_level, w//2, h//2) # Upward in 3D
+                ax_z = project_point(0, 100, 80, angle_x, angle_y, zoom_level, w//2, h//2)
+                
+                # Draw lines
+                cv2.line(image, (orig[0], orig[1]), (ax_x[0], ax_x[1]), (70, 70, 220), 2, cv2.LINE_AA) # X: Red
+                cv2.line(image, (orig[0], orig[1]), (ax_y[0], ax_y[1]), (70, 220, 70), 2, cv2.LINE_AA) # Y: Green
+                cv2.line(image, (orig[0], orig[1]), (ax_z[0], ax_z[1]), (220, 70, 70), 2, cv2.LINE_AA) # Z: Blue
+                
+                # Text labels
+                cv2.putText(image, "X", (ax_x[0]+5, ax_x[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (70, 70, 220), 1, cv2.LINE_AA)
+                cv2.putText(image, "Y", (ax_y[0], ax_y[1]-5), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (70, 220, 70), 1, cv2.LINE_AA)
+                cv2.putText(image, "Z", (ax_z[0]+5, ax_z[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (220, 70, 70), 1, cv2.LINE_AA)
+                
+                # Setup projection queues
+                render_queue_faces = []
+                render_queue_lines = []
+                
+                # 3D Extruded Prism
+                if extruded_prism is not None:
+                    vertices, edges, faces = extruded_prism
+                    rot_t = time.time() * 15.0
+                    proj_verts = []
+                    cam_verts = []
+                    for v in vertices:
+                        rx, ry, rz = rotate_3d_point(v[0], v[1], v[2], 0.0, rot_t, 0.0)
+                        # Sit on grid floor
+                        ry += 30.0
+                        
+                        screen_px, screen_py, adj_z = project_point(rx, ry, rz, angle_x, angle_y, zoom_level, w//2, h//2)
+                        proj_verts.append((screen_px, screen_py))
+                        
+                        cx_c, cy_c, cz_c = rotate_3d_point(rx, ry, rz, angle_x, angle_y, 0)
+                        cam_verts.append(cz_c)
+                        
+                    for edge in edges:
+                        v1, v2 = proj_verts[edge[0]], proj_verts[edge[1]]
+                        z_mid = (cam_verts[edge[0]] + cam_verts[edge[1]]) / 2.0
+                        render_queue_lines.append({
+                            'p1': v1, 'p2': v2, 'z': z_mid,
+                            'color': (72, 199, 142), 'thickness': 2, 'neon': True
+                        })
+                    for face in faces:
+                        pts = np.array([proj_verts[idx] for idx in face], dtype=np.int32)
+                        z_avg = sum(cam_verts[idx] for idx in face) / len(face)
+                        render_queue_faces.append({
+                            'pts': pts, 'z': z_avg,
+                            'color': (72, 199, 142), 'alpha': 0.16
+                        })
+                        
+                # 3D Placed Primitives
+                for prim in placed_primitives_3d:
+                    ptype = prim['type']
+                    pos_w = prim['pos']
+                    pcol = prim['color']
+                    psize = prim['size']
+                    
+                    if ptype == 'CUBE':
+                        verts, edges, faces = make_cube(psize)
+                    elif ptype == 'PYRAMID':
+                        verts, edges, faces = make_pyramid(psize)
+                    else:
+                        verts, edges, faces = make_cylinder(psize/2.0, psize)
+                        
+                    proj_verts = []
+                    cam_verts = []
+                    for v in verts:
+                        # Rotate locally
+                        rx, ry, rz = rotate_3d_point(v[0], v[1], v[2], prim['rot'][0], prim['rot'][1], prim['rot'][2])
+                        # Translate in world coords
+                        wx, wy, wz = rx + pos_w[0], ry + pos_w[1], rz + pos_w[2]
+                        
+                        screen_px, screen_py, adj_z = project_point(wx, wy, wz, angle_x, angle_y, zoom_level, w//2, h//2)
+                        proj_verts.append((screen_px, screen_py))
+                        
+                        cx_c, cy_c, cz_c = rotate_3d_point(wx, wy, wz, angle_x, angle_y, 0)
+                        cam_verts.append(cz_c)
+                        
+                    for edge in edges:
+                        v1, v2 = proj_verts[edge[0]], proj_verts[edge[1]]
+                        z_mid = (cam_verts[edge[0]] + cam_verts[edge[1]]) / 2.0
+                        render_queue_lines.append({
+                            'p1': v1, 'p2': v2, 'z': z_mid,
+                            'color': pcol, 'thickness': 2, 'neon': True
+                        })
+                    for face in faces:
+                        pts = np.array([proj_verts[idx] for idx in face], dtype=np.int32)
+                        z_avg = sum(cam_verts[idx] for idx in face) / len(face)
+                        render_queue_faces.append({
+                            'pts': pts, 'z': z_avg,
+                            'color': pcol, 'alpha': 0.22
+                        })
+                        
+                # 3D Freehand strokes
+                for stroke in draw_points_3d:
+                    pts_w = stroke['points']
+                    scol = stroke['color']
+                    stool = stroke['tool']
+                    
+                    proj_pts = []
+                    cam_depths = []
+                    for pt in pts_w:
+                        screen_px, screen_py, adj_z = project_point(pt[0], pt[1], pt[2], angle_x, angle_y, zoom_level, w//2, h//2)
+                        proj_pts.append((screen_px, screen_py))
+                        cx_c, cy_c, cz_c = rotate_3d_point(pt[0], pt[1], pt[2], angle_x, angle_y, 0)
+                        cam_depths.append(cz_c)
+                        
+                    for i in range(len(proj_pts) - 1):
+                        p1, p2 = proj_pts[i], proj_pts[i+1]
+                        z_mid = (cam_depths[i] + cam_depths[i+1]) / 2.0
+                        
+                        thick = 2
+                        if stool == 'MARKER': thick = 6
+                        is_neon = (stool == 'NEON')
+                        
+                        render_queue_lines.append({
+                            'p1': p1, 'p2': p2, 'z': z_mid,
+                            'color': scol, 'thickness': thick, 'neon': is_neon
+                        })
+                        
+                # Current active stroke
+                if len(current_stroke_3d) > 0:
+                    proj_pts = []
+                    cam_depths = []
+                    for pt in current_stroke_3d:
+                        screen_px, screen_py, adj_z = project_point(pt[0], pt[1], pt[2], angle_x, angle_y, zoom_level, w//2, h//2)
+                        proj_pts.append((screen_px, screen_py))
+                        cx_c, cy_c, cz_c = rotate_3d_point(pt[0], pt[1], pt[2], angle_x, angle_y, 0)
+                        cam_depths.append(cz_c)
+                        
+                    for i in range(len(proj_pts) - 1):
+                        p1, p2 = proj_pts[i], proj_pts[i+1]
+                        z_mid = (cam_depths[i] + cam_depths[i+1]) / 2.0
+                        render_queue_lines.append({
+                            'p1': p1, 'p2': p2, 'z': z_mid,
+                            'color': current_draw_color, 'thickness': 2, 'neon': (current_draw_tool == 'NEON')
+                        })
+                        
+                # Depth buffer rendering
+                render_queue_faces.sort(key=lambda f: f['z'], reverse=True)
+                overlay = image.copy()
+                for face in render_queue_faces:
+                    cv2.fillPoly(overlay, [face['pts']], face['color'], cv2.LINE_AA)
+                    cv2.addWeighted(overlay, face['alpha'], image, 1.0 - face['alpha'], 0, image)
+                    np.copyto(overlay, image)
+                    
+                render_queue_lines.sort(key=lambda l: l['z'], reverse=True)
+                for line in render_queue_lines:
+                    p1, p2 = line['p1'], line['p2']
+                    col = line['color']
+                    thick = line['thickness']
+                    if line['neon']:
+                        cv2.line(image, p1, p2, (max(0, col[0]-60), max(0, col[1]-60), max(0, col[2]-60)), thick * 3, cv2.LINE_AA)
+                        cv2.line(image, p1, p2, col, thick, cv2.LINE_AA)
+                        cv2.line(image, p1, p2, (255, 255, 255), max(1, thick//2), cv2.LINE_AA)
+                    else:
+                        cv2.line(image, p1, p2, col, thick, cv2.LINE_AA)
+                        
+                # ── HUD / Menu Panels Rendering ──
+                # Top bar panel
+                bar_h = 56
+                bar_y = int(-bar_h + anim_t * (bar_h + 2))
+                bar_bg = image[max(0,bar_y):max(0,bar_y)+bar_h, :].copy()
+                if bar_bg.shape[0] > 0:
+                    dark = np.full_like(bar_bg, (22, 22, 28), dtype=np.uint8)
+                    cv2.addWeighted(dark, 0.82, bar_bg, 0.18, 0, bar_bg)
+                    image[max(0,bar_y):max(0,bar_y)+bar_h, :] = bar_bg
+                cv2.line(image, (0, bar_y+bar_h-1), (w, bar_y+bar_h-1), (55, 55, 75), 1, cv2.LINE_AA)
+                
+                # Back button
+                bx, by = 18, bar_y + 14
+                draw_rounded_rect(image, (bx, by), (bx+76, by+28), (35, 35, 45), radius=6)
+                cv2.putText(image, "< BACK", (bx+8, by+19), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 175), 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_BACK' and ui_hover_frames > 0:
+                    prog = min(ui_hover_frames / HOVER_TRIGGER_FRAMES, 1.0)
+                    cv2.line(image, (bx, by+27), (bx + int(76*prog), by+27), (120, 90, 255), 2, cv2.LINE_AA)
+                    
+                # Center Actions: RESET CAM, CLEAR, EXTRUDE
+                tb_w = 3 * 120
+                tb_x = w // 2 - tb_w // 2
+                for bi, (bname, blbl) in enumerate([
+                    ('ACTION_3D_RESET_CAM', 'RESET CAM'),
+                    ('ACTION_3D_CLEAR', 'CLEAR'),
+                    ('ACTION_3D_EXTRUDE', 'EXTRUDE 2D')
+                ]):
+                    bbx = tb_x + bi * 120
+                    bby = bar_y + 14
+                    draw_rounded_rect(image, (bbx, bby), (bbx+100, bby+28), (35, 35, 45), radius=6)
+                    cv2.putText(image, blbl, (bbx+10, bby+19), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180, 180, 200), 1, cv2.LINE_AA)
+                    if ui_hover_target == bname and ui_hover_frames > 0:
+                        prog = min(ui_hover_frames / HOVER_TRIGGER_FRAMES, 1.0)
+                        cv2.line(image, (bbx, bby+27), (bbx+int(100*prog), bby+27), (120, 90, 255), 2, cv2.LINE_AA)
+                        
+                # Left side primitives selector panel
+                panel_y = int(120 - (1.0 - anim_t) * 150)
+                draw_glass_panel(image, (12, panel_y - 28), (134, panel_y + 220), radius=10, alpha=0.75, bg_color=(20,20,25))
+                cv2.putText(image, "3D PRIMITIVES", (18, panel_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (100, 90, 160), 1, cv2.LINE_AA)
+                
+                for bi, (bname, blbl) in enumerate([
+                    ('SELECT_3D_CUBE', 'CUBE'),
+                    ('SELECT_3D_PYRAMID', 'PYRAMID'),
+                    ('SELECT_3D_CYLINDER', 'CYLINDER')
+                ]):
+                    bbx = 18
+                    bby = panel_y + 8 + bi * 50
+                    active = (selected_primitive_type == blbl)
+                    bg_col = (55, 44, 100) if active else (30, 30, 40)
+                    txt_col = (220, 220, 250) if active else (130, 130, 150)
+                    draw_rounded_rect(image, (bbx, bby), (bbx+106, bby+36), bg_col, radius=5)
+                    cv2.putText(image, blbl, (bbx+10, bby+22), cv2.FONT_HERSHEY_SIMPLEX, 0.38, txt_col, 1, cv2.LINE_AA)
+                    if ui_hover_target == bname and ui_hover_frames > 0:
+                        prog = min(ui_hover_frames / HOVER_TRIGGER_FRAMES, 1.0)
+                        cv2.line(image, (bbx, bby+35), (bbx+int(106*prog), bby+35), (120, 90, 255), 2, cv2.LINE_AA)
+                        
+                # Place shape button
+                bby = panel_y + 164
+                draw_rounded_rect(image, (18, bby), (124, bby+36), (40, 60, 50), radius=5)
+                cv2.putText(image, "+ PLACE SHAPE", (24, bby+22), cv2.FONT_HERSHEY_SIMPLEX, 0.34, (120, 220, 150), 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_3D_ADD_SHAPE' and ui_hover_frames > 0:
+                    prog = min(ui_hover_frames / HOVER_TRIGGER_FRAMES, 1.0)
+                    cv2.line(image, (18, bby+35), (18+int(106*prog), bby+35), (120, 90, 255), 2, cv2.LINE_AA)
+                    
+                # Bottom Status HUD
+                hud_x, hud_y = 18, h - 84
+                draw_glass_panel(image, (hud_x, hud_y), (hud_x+300, hud_y+68), radius=8, alpha=0.75, bg_color=(20,20,25))
+                cv2.putText(image, f"CAM PITCH: {int(angle_x)}deg | YAW: {int(angle_y)}deg", (hud_x+12, hud_y+20), cv2.FONT_HERSHEY_SIMPLEX, 0.34, (150,150,170), 1, cv2.LINE_AA)
+                cv2.putText(image, f"SHAPES: {len(placed_primitives_3d)} | 3D PATHS: {len(draw_points_3d)}", (hud_x+12, hud_y+38), cv2.FONT_HERSHEY_SIMPLEX, 0.34, (150,150,170), 1, cv2.LINE_AA)
+                
+                guideline_txt = "FIST = ROTATE CAM | INDEX = DRAW 3D"
+                cv2.putText(image, guideline_txt, (hud_x+12, hud_y+55), cv2.FONT_HERSHEY_SIMPLEX, 0.34, (100, 90, 160), 1, cv2.LINE_AA)
+                
+                # 3D Cursor Indicator
+                if results and results.hand_landmarks:
+                    pulse = 0.5 + 0.5 * math.sin(time.time() * 8)
+                    for h_idx, hlm in enumerate(results.hand_landmarks):
+                        h_label = results.handedness[h_idx][0].category_name
+                        if h_label in hand_ema:
+                            idx_tip_coords = hand_ema[h_label][8]
+                            cx_cur = int(idx_tip_coords[0] * w)
+                            cy_cur = int(idx_tip_coords[1] * h)
+                            
+                            c_color = current_draw_color if not is_dragging_cam else (150,150,170)
+                            
+                            # Outer dynamic target ring
+                            r_outer = int(18 + pulse * 6) if is_drawing else int(12 + pulse * 3)
+                            cv2.circle(image, (cx_cur, cy_cur), r_outer, c_color, 1, cv2.LINE_AA)
+                            
+                            # Draw coordinate markers around 3D cursor
+                            cv2.putText(image, f"Z:{int(raw_lm_list[8].z * 600)}", (cx_cur+r_outer+6, cy_cur+4), cv2.FONT_HERSHEY_SIMPLEX, 0.3, c_color, 1, cv2.LINE_AA)
+                            
+                            # Center precision point
+                            cv2.circle(image, (cx_cur, cy_cur), 3, (255, 255, 255), cv2.FILLED, cv2.LINE_AA)
+                            
+                cv2.putText(image, f'{int(fps)}fps', (w//2 - 15, h - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (50, 50, 65), 1, cv2.LINE_AA)
+
+            # ── Session Logging ──
+            t_str = time.strftime('%H:%M:%S')
+            cx_val = cx if 'cx' in locals() else None
+            cy_val = cy if 'cy' in locals() else None
+            has_hand = len(results.hand_landmarks) > 0 if (results and results.hand_landmarks) else False
+            active_f = hand_fingers if (results and results.hand_landmarks) else []
+            tgt = current_target if 'current_target' in locals() else None
+            
+            log_entry = f"[{t_str}] Mode: {app_mode} | Hand: {has_hand} | Fingers: {active_f} | Draw: {is_drawing} | DragCam: {is_dragging_cam} | Cursor: ({cx_val}, {cy_val}) | Hover UI: {tgt}\n"
+            log_buffer.append(log_entry)
+            
+            if len(log_buffer) >= 30:
+                try:
+                    with open(log_file_path, "a") as f:
+                        f.writelines(log_buffer)
+                except Exception:
+                    pass
+                log_buffer.clear()
 
             cv2.imshow('Precise Finger Counter', image)
             
