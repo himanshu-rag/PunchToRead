@@ -2,9 +2,29 @@
 
 Welcome to **PunchToRead**, a project born out of a simple question: *What if our computers felt as magical and intuitive as the sci-fi interfaces we grew up watching in movies?* 
 
-This isn't just another Python script. It's a complete, futuristic dashboard powered by raw computer vision, Google's MediaPipe, and OpenCV. It entirely removes the need for a physical mouse, keyboard, or even a touch screen. With PunchToRead, your hands become the ultimate controller. By simply waving, pointing, and pinching in thin air, you can seamlessly navigate complex menus, read dynamic news articles, and even paint masterpieces on a multi-layered digital canvas.
+This isn't just another Python script. It's a complete, futuristic dashboard powered by raw computer vision, Google's MediaPipe, and OpenCV. It entirely removes the need for a physical mouse, keyboard, or even a touch screen. With PunchToRead, your hands become the ultimate controller. By simply waving, pointing, and pinching in thin air, you can seamlessly navigate complex menus, read dynamic news articles, paint masterpieces on a multi-layered digital canvas, and sculpt 3D spatial models.
 
 It’s fast. It’s fluid. And honestly? It feels like magic. 🪄
+
+---
+
+## 🆕 Latest Major Upgrades (Release Notes)
+
+### 🧊 1. 3D Spatial Sculptor Engine (`3D_MODE`)
+- **3-Finger Activation:** Hold up **3 fingers** (Index, Middle, Ring) at the Main Menu to enter the 3D Spatial Sculptor.
+- **Fist Camera Rotation:** Close your hand into a **fist** (`0 non-thumb fingers`) and drag in thin air to orbit and rotate the 3D viewport camera (Pitch & Yaw control).
+- **3D Spatial Path Drawing:** Point your index finger to paint floating 3D neon trails in physical space.
+- **Primitive Shape Placement:** Place 3D **CUBES**, **PYRAMIDS**, and **CYLINDERS** directly into the 3D space in front of your camera.
+- **Auto-Extrusion Engine:** Automatically extrude any 2D canvas drawing from Drawing Mode into a full 3D polygonal prism object with one click!
+
+### ⚡ 2. Ultra-Low Latency & Fast Hover Response
+- **60 FPS 1-Euro Adaptive Filter:** All interaction modes (`NEWS`, `DRAW`, `3D_MODE`) use 1-Euro adaptive filtered coordinates (`raw_lm_list[8]`) for instantaneous, zero-lag fingertip tracking.
+- **Animated Progress Line Hover:** Pointing at any button smoothly fills an animated glowing progress line (`HOVER_TRIGGER_FRAMES = 8`, ~0.25s), giving fast visual feedback before activating.
+- **UI Safety Guard Zones (`in_ui_margin`):** Automatic drawing suppression near top toolbars (`y < 75px`) and side panels (`x < 160px`). Zero trailing lines are drawn when reaching for buttons!
+- **Main Menu Cooldown:** A 25-frame transition lock when returning to `MAIN_MENU` prevents accidental mode re-entry when clicking `< BACK`.
+
+### 💥 3. Supernova Particle Shatter Effect
+- Clearing the canvas triggers a physics-based particle explosion where drawn pixels shatter away across the screen.
 
 ---
 
@@ -31,82 +51,67 @@ This is where the app gets its name. When you point at a topic you want to dive 
 
 The UI instantly reacts. The normal dashboard shatters away, the background dynamically dims into an immersive Dark Mode, and a massive, centralized article drops into view. We even dynamically generate and color-grade mock article images using OpenCV civil generative filtering, so every reading experience feels visually distinct and fresh.
 
-### 3D Pinch-to-Exit
-When you are done reading, you don't need to look for a tiny "X" button. Just perform a natural 3-finger pinch in the air (bringing your Thumb, Index, and Middle fingers together). We use strict 3D Euclidean distance calculations to detect the pinch, ensuring extreme precision. The article gracefully vanishes, and you're back in the dashboard.
+---
+
+## 🎨 Mode 2: Mid-Air 2D Drawing
+
+Holding **two fingers** (peace sign) at the main menu unlocks Drawing Mode.
+
+### Dynamic 3D Depth Brush
+The camera constantly analyzes the physical Z-axis distance of your hand relative to the lens.
+- Push your hand **closer** to the camera for thick, bold lines.
+- Pull your hand **further back** for ultra-thin precision details.
+
+### Smart Shapes (Hold-to-Snap)
+Draw a rough circle, rectangle, or triangle and hold your finger still at the end of the stroke for half a second—the app automatically vector-snaps it into a mathematically perfect shape.
+
+### Advanced Project Management
+- **Multi-Layer Support**: Create up to 5 distinct drawing layers with visibility toggles.
+- **Memory Undo System**: Hover over `UNDO` to pop previous strokes off the active layer stack.
+- **High-Res Export**: Click `SAVE` to composite and export `drawing_export.png` directly to disk.
 
 ---
 
-## 🎨 Mode 2: Mid-Air Drawing
+## 🧊 Mode 3: 3D Spatial Sculptor
 
-Holding **two fingers** (a peace sign) at the main menu unlocks the Drawing Mode. We took the concept of "air drawing" and turned it into a serious, robust creative suite.
+Holding **three fingers** at the main menu unlocks 3D Mode.
 
-### The Dynamic 3D Depth Brush
-This isn't a flat 2D canvas. The camera constantly analyzes the physical Z-axis distance of your hand relative to the lens. 
-- Want to draw a thick, bold line? Push your hand **closer** to the camera. 
-- Need ultra-thin precision details? Pull your hand **further back**. 
-It naturally scales the brush thickness based on real physical depth, giving you incredible control over your strokes.
-
-### Smart Shapes (Hold-to-Snap)
-Drawing a perfect circle in thin air is practically impossible because of natural hand tremors. So, we built a smart shape engine!
-If you draw a rough shape (like a messy circle, rectangle, or triangle) and hold your finger completely still at the end of the stroke for half a second, the app takes over. It runs your messy points through a complex Convex Hull and vector-tracking algorithm, calculates the intended geometry, and instantly **snaps** it into a mathematically perfect shape.
-
-### Advanced Project Management
-We didn't just stop at drawing; we added a full suite of management tools nested neatly on a frosted-glass Project Board on the left side of your screen:
-- **Multi-Layer Support**: You can create up to 5 distinct drawing layers. Need to hide a sketch while you ink? Just toggle the visibility eye icon!
-- **Memory Undo System**: Made a mistake? Hover over the `UNDO` button. We built a robust, layer-specific history stack that remembers your strokes and instantly pops the last one off the canvas.
-- **High-Res Export**: Hit `SAVE` and the app automatically composites all your visible layers, ignores the hidden ones, and instantly writes a high-resolution `drawing_export.png` directly to your hard drive. 
+- **Fist Drag:** Orbit and rotate the 3D viewport camera in 3D space.
+- **Index Point:** Paint floating 3D spatial stroke trails.
+- **Primitives Menu:** Add 3D Cubes, Pyramids, and Cylinders.
+- **EXTRUDE 2D:** Convert your active 2D drawing into a 3D polygonal prism!
 
 ---
 
 ## 🛠️ Installation & Requirements
 
-To run this futuristic dashboard, you don't need a supercomputer. A standard webcam and a moderately modern CPU are enough!
-
 ### Requirements
-The project relies on standard Python computer vision and machine learning libraries. All dependencies are listed in the `requirements.txt` file:
 - **Python 3.8+**
 - **OpenCV** (`opencv-python`)
 - **MediaPipe** (`mediapipe`)
 - **NumPy** (`numpy`)
 
 ### Setup Instructions
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/himanshu-rag/PunchToRead.git
-   cd PunchToRead
-   ```
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. **Run the magic:**
-   ```bash
-   python PunchToRead.py
-   ```
+```bash
+git clone https://github.com/himanshu-rag/PunchToRead.git
+cd PunchToRead
+pip install -r requirements.txt
+python PunchToRead.py
+```
 
 ---
 
 ## 🕹️ How to Use (Controls)
 
-No mouse? No problem. Here is your gesture cheat sheet:
-
 ### Main Menu
-- **Hold 1 Finger (Index):** Enter News Dashboard Mode
-- **Hold 2 Fingers (Peace Sign):** Enter Drawing Mode
+- **1 Finger (Index):** Enter News Dashboard Mode
+- **2 Fingers (Peace Sign):** Enter 2D Drawing Mode
+- **3 Fingers (Index, Middle, Ring):** Enter 3D Sculptor Mode
 
-### News Dashboard Mode
-- **Hover-to-Select:** Point 1 finger at the camera to highlight a news category.
-- **Swipe:** Flick your hand left or right in the air to switch pages.
-- **Punch-to-Read:** Once you are hovering over a category, close your hand into a fist (0 fingers) to open the article.
-- **3D Pinch-to-Exit:** Bring your Thumb, Index, and Middle fingers together to close an article or exit a mode.
-
-### Drawing Mode
-- **Draw:** Hold 1 finger (Index) up and move your hand to paint on the canvas. Move closer to the camera for thicker lines!
-- **Smart Snap:** Draw a rough circle or rectangle and hold your finger perfectly still at the end of the line for 0.5 seconds to snap it into a perfect shape.
-- **Hover/Move:** Hold 2 fingers (Peace sign) to move your cursor without drawing anything.
-- **Clear Canvas Action:** Open your whole hand (all 5 fingers) to instantly wipe the current layer.
-- **Project Board (Left):** Hover your cursor over the left side of the screen to reveal the Layer panel. You can add layers, toggle visibility, and use the `UNDO`, `CLR`, and `SAVE` buttons.
+### Navigation & Buttons
+- **Hover Over Button:** Point index finger over any button (`< BACK`, `CLEAR`, `RESET CAM`, color swatches). The glowing progress line fills up smoothly (~0.25s) and activates the button.
+- **Fist Gesture:** Close hand into a fist in 3D Mode to rotate camera, or in News Mode to "Punch-to-Read".
 
 ---
 
-PunchToRead is more than just a project; it's a completely reimagined way to interact with our digital world. Dive in, wave your hands, and experience the future. 🚀
+PunchToRead is a completely reimagined way to interact with our digital world. Dive in, wave your hands, and experience the future. 🚀
