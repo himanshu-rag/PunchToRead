@@ -154,6 +154,8 @@ def main():
     
     mode_enter_frame = 0
     prev_rendered_mode = 'MAIN_MENU'
+    mirror_mode = False
+    glow_particles = []
     
     selected_topic_global = None
     selected_topic_hand = None
@@ -588,6 +590,7 @@ def main():
                         hover_targets.append({'name': 'ACTION_BACK', 'box': (20, 20, 120, 60)})
                         hover_targets.append({'name': 'ACTION_FINGERS_MINUS', 'box': (px1+20, btn_y+45, px1+65, btn_y+80)})
                         hover_targets.append({'name': 'ACTION_FINGERS_PLUS', 'box': (px1+195, btn_y+45, px1+240, btn_y+80)})
+                        hover_targets.append({'name': 'ACTION_MIRROR', 'box': (px1+20, btn_y+90, px1+240, btn_y+125)})
                         
                         hovering_ui = False
                         current_target = None
@@ -613,6 +616,8 @@ def main():
                                     hl = layer_history[active_layer_idx]
                                     if len(hl) > 0 and canvas is not None:
                                         np.copyto(canvas, hl.pop())
+                                elif current_target == 'ACTION_MIRROR':
+                                    mirror_mode = not mirror_mode
                                 elif current_target == 'ACTION_BACK':
                                     app_mode = 'MAIN_MENU'
                                     prev_draw_x, prev_draw_y = 0, 0
@@ -755,6 +760,16 @@ def main():
                             was_drawing = False
                             current_strokes = [[] for _ in range(4)]
                             stroke_hold_frames = 0
+                            # Spawn glow particles on hover
+                            for _ in range(3):
+                                glow_particles.append({
+                                    'x': cx + random.randint(-10, 10),
+                                    'y': cy + random.randint(-10, 10),
+                                    'vx': random.uniform(-1.5, 1.5),
+                                    'vy': random.uniform(-2.5, -0.5),
+                                    'life': random.randint(10, 20),
+                                    'color': current_draw_color
+                                })
                         else:
                             prev_draw_pos = [(0, 0) for _ in range(4)]
                             was_drawing = False
@@ -1118,6 +1133,20 @@ def main():
                 if ui_hover_target == 'ACTION_FINGERS_PLUS' and ui_hover_frames > 0:
                     prog = ui_hover_frames / 20.0
                     cv2.rectangle(image, (px1+195, btn_y+31), (px1+195 + int(45*prog), btn_y + 35), (255, 150, 255), cv2.FILLED)
+                
+                btn_y += 45
+                mirror_col = (50, 80, 50) if mirror_mode else (50, 50, 60)
+                mirror_txt_col = (100, 255, 100) if mirror_mode else (200, 200, 200)
+                draw_rounded_rect(image, (px1+20, btn_y), (px1+240, btn_y+35), mirror_col, radius=8)
+                mirror_lbl = "MIRROR: ON" if mirror_mode else "MIRROR: OFF"
+                cv2.putText(image, mirror_lbl, (px1 + 55, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, mirror_txt_col, 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_MIRROR' and ui_hover_frames > 0:
+                    prog = ui_hover_frames / 20.0
+                    cv2.rectangle(image, (px1+20, btn_y+31), (px1+20 + int(220*prog), btn_y + 35), (100, 255, 100), cv2.FILLED)
+                
+                # Symmetry guide line when mirror is on
+                if mirror_mode:
+                    cv2.line(image, (w//2, 0), (w//2, h), (50, 100, 50), 1, cv2.LINE_AA)
                 
                 # 2. Right Color Panel (slides in from right)
                 cp_w, cp_h = 280, 420
