@@ -814,9 +814,9 @@ def main():
                 # Title slides down from above
                 ty = my - 155 + int((1 - at) * -70)
                 tc = (int(255*at),)*3
-                cv2.putText(image, "PunchToRead", (mx - 155, ty), cv2.FONT_HERSHEY_DUPLEX, 1.3, tc, 2, cv2.LINE_AA)
-                sc = (int(120*at),)*3
-                cv2.putText(image, "Choose your experience", (mx - 145, ty + 40), cv2.FONT_HERSHEY_DUPLEX, 0.55, sc, 1, cv2.LINE_AA)
+                cv2.putText(image, "PunchToRead", (mx - 148, ty), cv2.FONT_HERSHEY_SIMPLEX, 1.3, tc, 2, cv2.LINE_AA)
+                sc = (int(100*at), int(100*at), int(120*at))
+                cv2.putText(image, "gesture-controlled reading & drawing", (mx - 182, ty + 38), cv2.FONT_HERSHEY_SIMPLEX, 0.42, sc, 1, cv2.LINE_AA)
                 
                 # Mode selection cards
                 cw, ch = 220, 170
@@ -827,12 +827,13 @@ def main():
                 c1x = mx - cw - gap//2
                 c1y = my - 20 + c1_slide
                 news_sel = menu_selection_choice == 'NEWS_MENU'
-                nb = (200, 120, 255) if news_sel else (70, 70, 80)
-                draw_glass_panel(image, (c1x, c1y), (c1x+cw, c1y+ch), radius=22, alpha=0.7, bg_color=(25,25,35), border_color=nb)
-                nc = (int(255*at),)*3
-                cv2.putText(image, "News Mode", (c1x+55, c1y+80), cv2.FONT_HERSHEY_DUPLEX, 0.85, nc, 1+int(news_sel), cv2.LINE_AA)
-                nc2 = (int(130*at),)*3
-                cv2.putText(image, "Point 1 finger", (c1x+50, c1y+115), cv2.FONT_HERSHEY_DUPLEX, 0.5, nc2, 1, cv2.LINE_AA)
+                nb = (120, 90, 255) if news_sel else (55, 55, 70)
+                draw_glass_panel(image, (c1x, c1y), (c1x+cw, c1y+ch), radius=18, alpha=0.75, bg_color=(28,28,36), border_color=nb)
+                nc_hi = (int(240*at), int(240*at), int(248*at))
+                nc_lo = (int(100*at), int(100*at), int(115*at))
+                cv2.putText(image, "NEWS", (c1x+70, c1y+60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, nc_hi, 1+int(news_sel), cv2.LINE_AA)
+                cv2.putText(image, "1 finger", (c1x+68, c1y+90), cv2.FONT_HERSHEY_SIMPLEX, 0.42, nc_lo, 1, cv2.LINE_AA)
+                cv2.putText(image, "hold to select", (c1x+45, c1y+120), cv2.FONT_HERSHEY_SIMPLEX, 0.36, nc_lo, 1, cv2.LINE_AA)
                 
                 # Draw Card (rises with stagger)
                 c2_at = ease_out_cubic(min(max(0, mode_enter_frame - 4) / 20.0, 1.0))
@@ -840,35 +841,36 @@ def main():
                 c2x = mx + gap//2
                 c2y = my - 20 + c2_slide
                 draw_sel = menu_selection_choice == 'DRAW_MODE'
-                db = (200, 120, 255) if draw_sel else (70, 70, 80)
-                draw_glass_panel(image, (c2x, c2y), (c2x+cw, c2y+ch), radius=22, alpha=0.7, bg_color=(25,25,35), border_color=db)
-                dc = (int(255*c2_at),)*3
-                cv2.putText(image, "Draw Mode", (c2x+55, c2y+80), cv2.FONT_HERSHEY_DUPLEX, 0.85, dc, 1+int(draw_sel), cv2.LINE_AA)
-                dc2 = (int(130*c2_at),)*3
-                cv2.putText(image, "Point 2 fingers", (c2x+45, c2y+115), cv2.FONT_HERSHEY_DUPLEX, 0.5, dc2, 1, cv2.LINE_AA)
+                db = (120, 90, 255) if draw_sel else (55, 55, 70)
+                draw_glass_panel(image, (c2x, c2y), (c2x+cw, c2y+ch), radius=18, alpha=0.75, bg_color=(28,28,36), border_color=db)
+                dc_hi = (int(240*c2_at), int(240*c2_at), int(248*c2_at))
+                dc_lo = (int(100*c2_at), int(100*c2_at), int(115*c2_at))
+                cv2.putText(image, "DRAW", (c2x+72, c2y+60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, dc_hi, 1+int(draw_sel), cv2.LINE_AA)
+                cv2.putText(image, "2 fingers", (c2x+64, c2y+90), cv2.FONT_HERSHEY_SIMPLEX, 0.42, dc_lo, 1, cv2.LINE_AA)
+                cv2.putText(image, "hold to select", (c2x+45, c2y+120), cv2.FONT_HERSHEY_SIMPLEX, 0.36, dc_lo, 1, cv2.LINE_AA)
                 
                 # Selection highlight fade-in (replaces flat bar/ring)
                 if menu_selection_frames > 0:
                     prog = menu_selection_frames / 15.0
-                    fill_c = (220, 140, 255)
+                    fill_c = (120, 90, 255)
                     ov_fill = image.copy()
                     if news_sel:
-                        draw_rounded_rect(ov_fill, (c1x, c1y), (c1x+cw, c1y+ch), fill_c, cv2.FILLED, radius=22)
+                        draw_rounded_rect(ov_fill, (c1x, c1y), (c1x+cw, c1y+ch), fill_c, cv2.FILLED, radius=18)
                     else:
-                        draw_rounded_rect(ov_fill, (c2x, c2y), (c2x+cw, c2y+ch), fill_c, cv2.FILLED, radius=22)
-                    cv2.addWeighted(ov_fill, 0.4 * prog, image, 1.0 - 0.4 * prog, 0, image)
+                        draw_rounded_rect(ov_fill, (c2x, c2y), (c2x+cw, c2y+ch), fill_c, cv2.FILLED, radius=18)
+                    cv2.addWeighted(ov_fill, 0.25 * prog, image, 1.0 - 0.25 * prog, 0, image)
 
             elif app_mode == 'NEWS_MENU':
-                cv2.putText(image, f'FPS: {int(fps)}', (w - 120, 40), cv2.FONT_HERSHEY_DUPLEX, 0.6, (150, 150, 150), 1, cv2.LINE_AA)
+                cv2.putText(image, f'{int(fps)} fps', (w - 80, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (70, 70, 90), 1, cv2.LINE_AA)
                 
-                # Draw Back Button
-                draw_rounded_rect(image, (20, 20), (130, 60), (60, 40, 40), radius=12)
-                cv2.putText(image, "< BACK", (32, 46), cv2.FONT_HERSHEY_DUPLEX, 0.55, (255, 180, 180), 1, cv2.LINE_AA)
+                # BACK button
+                draw_rounded_rect(image, (20, 20), (110, 52), (38, 38, 48), radius=8)
+                cv2.putText(image, "< BACK", (30, 41), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 200), 1, cv2.LINE_AA)
                 if exit_frames > 0:
-                    prog = exit_frames / 20.0
-                    cv2.rectangle(image, (20, 55), (20 + int(110 * prog), 60), (200, 100, 100), cv2.FILLED)
+                    prog = min(exit_frames / 20.0, 1.0)
+                    cv2.rectangle(image, (20, 48), (20 + int(90*prog), 52), (120, 90, 255), cv2.FILLED)
 
-                            
+                    
                 if active_news_right:
                     box_width_R = 300
                     box_height_R = max(70, 40 * len(active_news_right) + 40)
@@ -931,13 +933,13 @@ def main():
                 cv2.rectangle(overlay, (0, 0), (w, h), (10, 10, 15), cv2.FILLED)
                 cv2.addWeighted(overlay, 0.85, image, 0.15, 0, image)
                 
-                # BACK button — rendered AFTER overlay so it's always visible
-                draw_rounded_rect(image, (20, 20), (130, 60), (60, 40, 40), radius=12)
-                cv2.putText(image, "< BACK", (32, 46), cv2.FONT_HERSHEY_DUPLEX, 0.55, (255, 180, 180), 1, cv2.LINE_AA)
+                # BACK button
+                draw_rounded_rect(image, (20, 20), (110, 52), (38, 38, 48), radius=8)
+                cv2.putText(image, "< BACK", (30, 41), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 200), 1, cv2.LINE_AA)
                 if exit_frames > 0:
-                    prog = exit_frames / 20.0
-                    cv2.rectangle(image, (20, 55), (20 + int(110 * prog), 60), (200, 100, 100), cv2.FILLED)
-                
+                    prog = min(exit_frames / 20.0, 1.0)
+                    cv2.rectangle(image, (20, 48), (20 + int(90*prog), 52), (120, 90, 255), cv2.FILLED)
+
                 box_w, box_h = 1000, 520
                 offset_x = 0
                 if transition_frames > 0:
@@ -1034,12 +1036,12 @@ def main():
                 cv2.rectangle(overlay, (0, 0), (w, h), (15, 15, 20), cv2.FILLED)
                 cv2.addWeighted(overlay, 0.6 * anim_bg, image, 1.0 - 0.6 * anim_bg, 0, image)
                 
-                # BACK button — rendered AFTER overlay so it's always visible
-                draw_rounded_rect(image, (20, 20), (130, 60), (60, 40, 40), radius=12)
-                cv2.putText(image, "< BACK", (32, 46), cv2.FONT_HERSHEY_DUPLEX, 0.55, (255, 180, 180), 1, cv2.LINE_AA)
+                # BACK button
+                draw_rounded_rect(image, (20, 20), (110, 52), (38, 38, 48), radius=8)
+                cv2.putText(image, "< BACK", (30, 41), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 200), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_BACK' and ui_hover_frames > 0:
-                    prog = ui_hover_frames / 20.0
-                    cv2.rectangle(image, (20, 55), (20 + int(110 * prog), 60), (200, 100, 100), cv2.FILLED)
+                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    cv2.rectangle(image, (20, 48), (20 + int(90*prog), 52), (120, 90, 255), cv2.FILLED)
                 
                 # Composite all visible layers
                 for layer_data in layers:
@@ -1055,7 +1057,7 @@ def main():
                 py1 = int(h/2) - int(pb_h/2)
                 px2, py2 = px1 + pb_w, py1 + pb_h
                 draw_glass_panel(image, (px1, py1), (px2, py2), radius=20, alpha=0.7, bg_color=(40, 40, 45))
-                cv2.putText(image, "Layers", (px1 + 105, py1 + 35), cv2.FONT_HERSHEY_DUPLEX, 0.7, (240, 240, 240), 1, cv2.LINE_AA)
+                cv2.putText(image, "LAYERS", (px1 + 102, py1 + 32), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 100, 120), 1, cv2.LINE_AA)
                 
                 # New Layer button
                 if len(layers) < MAX_LAYERS:
@@ -1102,62 +1104,62 @@ def main():
                 
                 # CLR Button
                 cx_clear = px1 + 20
-                draw_rounded_rect(image, (cx_clear, btn_y), (cx_clear + 70, btn_y + 35), (50, 50, 60), radius=8)
-                cv2.putText(image, "CLR", (cx_clear + 18, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
+                draw_rounded_rect(image, (cx_clear, btn_y), (cx_clear + 70, btn_y + 32), (42, 42, 52), radius=6)
+                cv2.putText(image, "CLEAR", (cx_clear + 8, btn_y + 21), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200, 80, 80), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_CLEAR' and ui_hover_frames > 0:
-                    prog = ui_hover_frames / 20.0
-                    cv2.rectangle(image, (cx_clear, btn_y+31), (cx_clear + int(70*prog), btn_y + 35), (255, 100, 100), cv2.FILLED)
+                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    cv2.rectangle(image, (cx_clear, btn_y+28), (cx_clear + int(70*prog), btn_y + 32), (200, 80, 80), cv2.FILLED)
                     
                 # UNDO Button
                 cx_undo = px1 + 105
-                draw_rounded_rect(image, (cx_undo, btn_y), (cx_undo + 70, btn_y + 35), (50, 50, 60), radius=8)
-                cv2.putText(image, "UNDO", (cx_undo + 12, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
+                draw_rounded_rect(image, (cx_undo, btn_y), (cx_undo + 70, btn_y + 32), (42, 42, 52), radius=6)
+                cv2.putText(image, "UNDO", (cx_undo + 12, btn_y + 21), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (170, 170, 200), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_UNDO' and ui_hover_frames > 0:
-                    prog = ui_hover_frames / 20.0
-                    cv2.rectangle(image, (cx_undo, btn_y+31), (cx_undo + int(70*prog), btn_y + 35), (100, 200, 255), cv2.FILLED)
+                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    cv2.rectangle(image, (cx_undo, btn_y+28), (cx_undo + int(70*prog), btn_y + 32), (90, 180, 255), cv2.FILLED)
                     
                 # SAVE Button
                 cx_save = px1 + 190
-                draw_rounded_rect(image, (cx_save, btn_y), (cx_save + 70, btn_y + 35), (50, 60, 50), radius=8)
-                cv2.putText(image, "SAVE", (cx_save + 15, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, (150, 255, 150), 1, cv2.LINE_AA)
+                draw_rounded_rect(image, (cx_save, btn_y), (cx_save + 70, btn_y + 32), (42, 52, 42), radius=6)
+                cv2.putText(image, "SAVE", (cx_save + 15, btn_y + 21), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (72, 199, 142), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_SAVE' and ui_hover_frames > 0:
-                    prog = ui_hover_frames / 20.0
-                    cv2.rectangle(image, (cx_save, btn_y+31), (cx_save + int(70*prog), btn_y + 35), (100, 255, 100), cv2.FILLED)
+                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    cv2.rectangle(image, (cx_save, btn_y+28), (cx_save + int(70*prog), btn_y + 32), (72, 199, 142), cv2.FILLED)
                 btn_y += 45
                 
                 # FINGERS - Button
-                draw_rounded_rect(image, (px1+20, btn_y), (px1+65, btn_y+35), (70, 50, 70), radius=8)
-                cv2.putText(image, "-", (px1 + 37, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 200, 255), 1, cv2.LINE_AA)
+                draw_rounded_rect(image, (px1+20, btn_y), (px1+62, btn_y+32), (42, 42, 52), radius=6)
+                cv2.putText(image, "-", (px1 + 35, btn_y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (140, 120, 220), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_FINGERS_MINUS' and ui_hover_frames > 0:
-                    prog = ui_hover_frames / 20.0
-                    cv2.rectangle(image, (px1+20, btn_y+31), (px1+20 + int(45*prog), btn_y + 35), (255, 150, 255), cv2.FILLED)
+                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    cv2.rectangle(image, (px1+20, btn_y+28), (px1+20 + int(42*prog), btn_y + 32), (120, 90, 255), cv2.FILLED)
                 
                 # FINGERS Label
-                draw_rounded_rect(image, (px1+70, btn_y), (px1+190, btn_y+35), (50, 50, 60), radius=8)
-                lbl = "PEN MODE" if required_draw_fingers == 5 else f"{required_draw_fingers} FINGERS"
-                txt_x = px1 + 85 if required_draw_fingers != 5 else px1 + 75
-                cv2.putText(image, lbl, (txt_x, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, (255, 200, 255), 1, cv2.LINE_AA)
+                draw_rounded_rect(image, (px1+68, btn_y), (px1+192, btn_y+32), (32, 32, 42), radius=6)
+                lbl = "PEN" if required_draw_fingers == 5 else f"{required_draw_fingers}F"
+                txt_x = px1 + 118 if required_draw_fingers != 5 else px1 + 116
+                cv2.putText(image, lbl, (txt_x, btn_y + 21), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (160, 140, 240), 1, cv2.LINE_AA)
                 
                 # FINGERS + Button
-                draw_rounded_rect(image, (px1+195, btn_y), (px1+240, btn_y+35), (70, 50, 70), radius=8)
-                cv2.putText(image, "+", (px1 + 210, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 200, 255), 1, cv2.LINE_AA)
+                draw_rounded_rect(image, (px1+198, btn_y), (px1+240, btn_y+32), (42, 42, 52), radius=6)
+                cv2.putText(image, "+", (px1 + 211, btn_y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (140, 120, 220), 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_FINGERS_PLUS' and ui_hover_frames > 0:
-                    prog = ui_hover_frames / 20.0
-                    cv2.rectangle(image, (px1+195, btn_y+31), (px1+195 + int(45*prog), btn_y + 35), (255, 150, 255), cv2.FILLED)
+                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    cv2.rectangle(image, (px1+198, btn_y+28), (px1+198 + int(42*prog), btn_y + 32), (120, 90, 255), cv2.FILLED)
                 
                 btn_y += 45
-                mirror_col = (50, 80, 50) if mirror_mode else (50, 50, 60)
-                mirror_txt_col = (100, 255, 100) if mirror_mode else (200, 200, 200)
-                draw_rounded_rect(image, (px1+20, btn_y), (px1+240, btn_y+35), mirror_col, radius=8)
-                mirror_lbl = "MIRROR: ON" if mirror_mode else "MIRROR: OFF"
-                cv2.putText(image, mirror_lbl, (px1 + 55, btn_y + 22), cv2.FONT_HERSHEY_DUPLEX, 0.45, mirror_txt_col, 1, cv2.LINE_AA)
+                mirror_col = (32, 48, 38) if mirror_mode else (42, 42, 52)
+                mirror_txt_col = (72, 199, 142) if mirror_mode else (130, 130, 150)
+                draw_rounded_rect(image, (px1+20, btn_y), (px1+240, btn_y+32), mirror_col, radius=6)
+                mirror_lbl = "MIRROR  ON" if mirror_mode else "MIRROR  OFF"
+                cv2.putText(image, mirror_lbl, (px1 + 62, btn_y + 21), cv2.FONT_HERSHEY_SIMPLEX, 0.38, mirror_txt_col, 1, cv2.LINE_AA)
                 if ui_hover_target == 'ACTION_MIRROR' and ui_hover_frames > 0:
-                    prog = ui_hover_frames / 20.0
-                    cv2.rectangle(image, (px1+20, btn_y+31), (px1+20 + int(220*prog), btn_y + 35), (100, 255, 100), cv2.FILLED)
+                    prog = min(ui_hover_frames / 20.0, 1.0)
+                    cv2.rectangle(image, (px1+20, btn_y+28), (px1+20 + int(220*prog), btn_y + 32), (72, 199, 142), cv2.FILLED)
                 
                 # Symmetry guide line when mirror is on
                 if mirror_mode:
-                    cv2.line(image, (w//2, 0), (w//2, h), (50, 100, 50), 1, cv2.LINE_AA)
+                    cv2.line(image, (w//2, 0), (w//2, h), (60, 48, 120), 1, cv2.LINE_AA)
                 
                 # 2. Right Color Panel (slides in from right)
                 cp_w, cp_h = 280, 420
@@ -1165,7 +1167,7 @@ def main():
                 cp_y1 = int(h/2) - int(cp_h/2)
                 cp_x2, cp_y2 = cp_x1 + cp_w, cp_y1 + cp_h
                 draw_glass_panel(image, (cp_x1, cp_y1), (cp_x2, cp_y2), radius=20, alpha=0.8, bg_color=(35, 35, 40))
-                cv2.putText(image, "Colors", (cp_x1 + 110, cp_y1 + 25), cv2.FONT_HERSHEY_DUPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+                cv2.putText(image, "PALETTE", (cp_x1 + 100, cp_y1 + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (90, 90, 110), 1, cv2.LINE_AA)
                 
                 gx, gy = cp_x1 + 60, cp_y1 + 60
                 for c in range(2):
