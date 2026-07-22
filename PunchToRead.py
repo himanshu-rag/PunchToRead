@@ -157,6 +157,7 @@ def main():
     mirror_mode = False
     grid_mode = True
     glow_particles = []
+    shatter_particles = []
     
     selected_topic_global = None
     selected_topic_hand = None
@@ -619,7 +620,7 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                             hover_targets.append({'name': f'COLOR_{ci}_{ri}', 'box': (sx-14, 8, sx+14, 48), 'color': swatch_colors_flat[si % len(swatch_colors_flat)]})
 
                         # ── Tool icons in top bar ──
-                        tool_list = ['PEN', 'MARKER', 'NEON', 'CALLIGRAPHY', 'SPRAY', 'ERASER']
+                        tool_list = ['PEN', 'MARKER', 'NEON', 'AURORA', 'CALLIGRAPHY', 'SPRAY', 'ERASER']
                         t_total = len(tool_list) * 46
                         t_start = w//2 - t_total//2
                         for ti, tool in enumerate(tool_list):
@@ -674,6 +675,25 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                                 elif current_target == 'ACTION_CLEAR':
                                     if canvas is not None:
                                         layer_history[active_layer_idx].append(canvas.copy())
+                                        # Supernova Particle Shatter: sample drawing pixels to explode into physics particles
+                                        non_zero_y, non_zero_x = np.nonzero(cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY))
+                                        if len(non_zero_x) > 0:
+                                            step = max(1, len(non_zero_x) // 180)  # cap at ~180 particles for high FPS
+                                            for idx_p in range(0, len(non_zero_x), step):
+                                                px_x, px_y = non_zero_x[idx_p], non_zero_y[idx_p]
+                                                p_color = tuple(int(c) for c in canvas[px_y, px_x])
+                                                angle = random.uniform(0, 2 * math.pi)
+                                                speed = random.uniform(3.0, 12.0)
+                                                shatter_particles.append({
+                                                    'x': float(px_x),
+                                                    'y': float(px_y),
+                                                    'vx': math.cos(angle) * speed,
+                                                    'vy': math.sin(angle) * speed - 2.0, # initial upward pop
+                                                    'life': random.randint(30, 55),
+                                                    'max_life': 55,
+                                                    'size': random.randint(2, 6),
+                                                    'color': p_color
+                                                })
                                         canvas.fill(0)
                                 elif current_target == 'ACTION_UNDO':
                                     hl = layer_history[active_layer_idx]
@@ -781,7 +801,6 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                                             draw_smooth_curve(canvas, (px, py), (fx, fy), current_draw_color, t2)
                                             draw_smooth_curve(canvas, (px, py), (fx, fy), (255, 255, 255), t3)
                                             
-                                            # Spawn glowing neon sparkler particles along line
                                             if random.random() < 0.4:
                                                 glow_particles.append({
                                                     'x': fx + random.randint(-4, 4),
@@ -790,6 +809,25 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                                                     'vy': random.uniform(-1.0, 1.0),
                                                     'life': random.randint(12, 25),
                                                     'color': current_draw_color
+                                                })
+                                        elif current_draw_tool == 'AURORA':
+                                            # Rainbow Plasma Energy Brush
+                                            hue = int((time.time() * 120 + len(current_strokes[fi]) * 5) % 180)
+                                            hsv_pixel = np.uint8([[[hue, 255, 255]]])
+                                            bgr_rainbow = tuple(int(c) for c in cv2.cvtColor(hsv_pixel, cv2.COLOR_HSV2BGR)[0][0])
+                                            t_aurora = max(3, int(14 * depth_mult))
+                                            draw_smooth_curve(canvas, (px, py), (fx, fy), bgr_rainbow, t_aurora)
+                                            draw_smooth_curve(canvas, (px, py), (fx, fy), (255, 255, 255), max(1, t_aurora // 3))
+                                            for _ in range(2):
+                                                shatter_particles.append({
+                                                    'x': float(fx),
+                                                    'y': float(fy),
+                                                    'vx': random.uniform(-2.5, 2.5),
+                                                    'vy': random.uniform(-3.5, 0.5),
+                                                    'life': random.randint(15, 30),
+                                                    'max_life': 30,
+                                                    'size': random.randint(2, 5),
+                                                    'color': bgr_rainbow
                                                 })
                                         elif current_draw_tool == 'CALLIGRAPHY':
                                             offset = max(1, int(8 * depth_mult))
@@ -1134,8 +1172,8 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
                     cv2.line(image, (bx, by+27), (bx + int(76*prog), by+27), (120, 90, 255), 2, cv2.LINE_AA)
 
                 # ── Tool icons (center) ──
-                tool_list  = ['PEN', 'MARKER', 'NEON', 'CALLIGRAPHY', 'SPRAY', 'ERASER']
-                tool_icons = ['P', 'M', 'N', 'C', 'S', 'E']
+                tool_list  = ['PEN', 'MARKER', 'NEON', 'AURORA', 'CALLIGRAPHY', 'SPRAY', 'ERASER']
+                tool_icons = ['P', 'M', 'N', 'A', 'C', 'S', 'E']
                 t_total = len(tool_list) * 46
                 t_start = w//2 - t_total//2
                 for ti, (tool, icon) in enumerate(zip(tool_list, tool_icons)):
