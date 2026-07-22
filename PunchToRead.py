@@ -301,8 +301,12 @@ def main():
                     if handedness_label not in hand_ema:
                         hand_ema[handedness_label] = [(lm.x, lm.y, lm.z) for lm in raw_hand_landmarks]
                         
+                    raw_lm_list = []
                     hand_landmarks = []
                     for i, lm in enumerate(raw_hand_landmarks):
+                        # Raw landmark for pixel-perfect drawing
+                        raw_lm_list.append(SmoothLM(lm.x, lm.y, lm.z))
+                        # EMA-smoothed landmark for stable gesture detection
                         prev_x, prev_y, prev_z = hand_ema[handedness_label][i]
                         new_x = prev_x + EMA_ALPHA * (lm.x - prev_x)
                         new_y = prev_y + EMA_ALPHA * (lm.y - prev_y)
@@ -532,21 +536,22 @@ def main():
                         
                         canvas = layers[active_layer_idx]['canvas'] if layers else None
                         if required_draw_fingers == 5:
-                            pip = hand_landmarks[6]
-                            dx = index_tip.x - pip.x
-                            dy = index_tip.y - pip.y
-                            cx, cy = int((index_tip.x + dx * 1.5) * w), int((index_tip.y + dy * 1.5) * h)
+                            pip_raw = raw_lm_list[6]
+                            tip_raw = raw_lm_list[8]
+                            dx = tip_raw.x - pip_raw.x
+                            dy = tip_raw.y - pip_raw.y
+                            cx, cy = int((tip_raw.x + dx * 1.5) * w), int((tip_raw.y + dy * 1.5) * h)
                             cv2.circle(image, (cx, cy), 3, (0, 0, 255), -1) # Red dot for pen tip
                         else:
-                            # Use first detected extended fingertip
+                            # Use first detected extended fingertip — RAW for precision
                             tip_ids_order = [8, 12, 16, 20]
                             finger_name_order = ['I', 'M', 'R', 'P']
-                            cursor_tip = index_tip
+                            raw_cursor = raw_lm_list[8]  # default index
                             for fni, fn in enumerate(finger_name_order):
                                 if fn in hand_fingers:
-                                    cursor_tip = hand_landmarks[tip_ids_order[fni]]
+                                    raw_cursor = raw_lm_list[tip_ids_order[fni]]
                                     break
-                            cx, cy = int(cursor_tip.x * w), int(cursor_tip.y * h)
+                            cx, cy = int(raw_cursor.x * w), int(raw_cursor.y * h)
                         
                         hover_targets = []
                         # Color Panel Targets (Right Side)
@@ -685,7 +690,7 @@ def main():
                                 if required_draw_fingers == 5:
                                     fx, fy = cx, cy
                                 else:
-                                    fx, fy = int(hand_landmarks[tip_idx].x * w), int(hand_landmarks[tip_idx].y * h)
+                                    fx, fy = int(raw_lm_list[tip_idx].x * w), int(raw_lm_list[tip_idx].y * h)
                                 current_strokes[fi].append((fx, fy))
                                 
                                 px, py = prev_draw_pos[fi]
