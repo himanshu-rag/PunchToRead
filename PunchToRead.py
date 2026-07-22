@@ -862,11 +862,11 @@ def main():
                 cv2.putText(image, f'FPS: {int(fps)}', (w - 120, 40), cv2.FONT_HERSHEY_DUPLEX, 0.6, (150, 150, 150), 1, cv2.LINE_AA)
                 
                 # Draw Back Button
-                draw_rounded_rect(image, (20, 20), (120, 60), (40, 40, 50), radius=10)
-                cv2.putText(image, "< BACK", (35, 45), cv2.FONT_HERSHEY_DUPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+                draw_rounded_rect(image, (20, 20), (130, 60), (60, 40, 40), radius=12)
+                cv2.putText(image, "< BACK", (32, 46), cv2.FONT_HERSHEY_DUPLEX, 0.55, (255, 180, 180), 1, cv2.LINE_AA)
                 if exit_frames > 0:
                     prog = exit_frames / 20.0
-                    cv2.rectangle(image, (20, 55), (20 + int(100 * prog), 60), (100, 200, 255), cv2.FILLED)
+                    cv2.rectangle(image, (20, 55), (20 + int(110 * prog), 60), (200, 100, 100), cv2.FILLED)
 
                             
                 if active_news_right:
@@ -928,14 +928,15 @@ def main():
                 article_frame_count += 1
                 overlay = image.copy()
                 
-                # Draw Back Button
-                draw_rounded_rect(image, (20, 20), (120, 60), (40, 40, 50), radius=10)
-                cv2.putText(image, "< BACK", (35, 45), cv2.FONT_HERSHEY_DUPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
-                if exit_frames > 0:
-                    prog = exit_frames / 20.0
-                    cv2.rectangle(image, (20, 55), (20 + int(100 * prog), 60), (100, 200, 255), cv2.FILLED)
                 cv2.rectangle(overlay, (0, 0), (w, h), (10, 10, 15), cv2.FILLED)
                 cv2.addWeighted(overlay, 0.85, image, 0.15, 0, image)
+                
+                # BACK button — rendered AFTER overlay so it's always visible
+                draw_rounded_rect(image, (20, 20), (130, 60), (60, 40, 40), radius=12)
+                cv2.putText(image, "< BACK", (32, 46), cv2.FONT_HERSHEY_DUPLEX, 0.55, (255, 180, 180), 1, cv2.LINE_AA)
+                if exit_frames > 0:
+                    prog = exit_frames / 20.0
+                    cv2.rectangle(image, (20, 55), (20 + int(110 * prog), 60), (200, 100, 100), cv2.FILLED)
                 
                 box_w, box_h = 1000, 520
                 offset_x = 0
@@ -1032,6 +1033,13 @@ def main():
                 overlay = image.copy()
                 cv2.rectangle(overlay, (0, 0), (w, h), (15, 15, 20), cv2.FILLED)
                 cv2.addWeighted(overlay, 0.6 * anim_bg, image, 1.0 - 0.6 * anim_bg, 0, image)
+                
+                # BACK button — rendered AFTER overlay so it's always visible
+                draw_rounded_rect(image, (20, 20), (130, 60), (60, 40, 40), radius=12)
+                cv2.putText(image, "< BACK", (32, 46), cv2.FONT_HERSHEY_DUPLEX, 0.55, (255, 180, 180), 1, cv2.LINE_AA)
+                if ui_hover_target == 'ACTION_BACK' and ui_hover_frames > 0:
+                    prog = ui_hover_frames / 20.0
+                    cv2.rectangle(image, (20, 55), (20 + int(110 * prog), 60), (200, 100, 100), cv2.FILLED)
                 
                 # Composite all visible layers
                 for layer_data in layers:
