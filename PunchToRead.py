@@ -280,8 +280,14 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
     news_mapping_left = { 'T': 'Thumb: India budget', 'I': 'Index: MNC Jobs', 'M': 'Middle: Claude AI', 'R': 'Ring: Weather/AQI', 'P': 'Pinky: Mobile Tech' }
 
     cap = cv2.VideoCapture(0)
-    time.sleep(1)
+    if not cap.isOpened():
+        print("Camera index 0 not available, trying index 1...")
+        cap = cv2.VideoCapture(1)
     
+    if not cap.isOpened():
+        print("ERROR: Could not open any camera device (0 or 1). Please check webcam permissions!")
+        return
+
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     
@@ -307,7 +313,9 @@ def draw_smooth_curve(img, p1, p2, color, thickness):
         
         while cap.isOpened():
             success, image = cap.read()
-            if not success: break
+            if not success:
+                print("Error: cap.read() failed to grab frame!")
+                break
             
             image = cv2.flip(image, 1)
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
